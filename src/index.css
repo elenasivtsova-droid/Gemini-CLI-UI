@@ -34,10 +34,10 @@
 /* Gemini glow animation */
 @keyframes gemini-glow {
   0%, 100% {
-    box-shadow: 0 0 20px rgba(6, 182, 212, 0.5), 0 0 40px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 20px rgb(var(--gemini-accent-rgb) / 0.5), 0 0 40px rgb(var(--gemini-accent-rgb) / 0.3);
   }
   50% {
-    box-shadow: 0 0 30px rgba(6, 182, 212, 0.8), 0 0 60px rgba(6, 182, 212, 0.4);
+    box-shadow: 0 0 30px rgb(var(--gemini-accent-rgb) / 0.8), 0 0 60px rgb(var(--gemini-accent-rgb) / 0.4);
   }
 }
 
@@ -94,6 +94,13 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 192 91% 36%;
     --radius: 0.5rem;
+
+    --gemini-accent: 186 90% 43%;
+    --gemini-accent-2: 192 91% 36%;
+    --gemini-accent-3: 195 88% 31%;
+    --gemini-accent-rgb: 6 182 212;
+
+    --gemini-code-bg: 210 40% 98.5%;
   }
 
   .dark {
@@ -116,6 +123,13 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 192 91% 46%;
+
+    --gemini-accent: 186 90% 43%;
+    --gemini-accent-2: 192 91% 46%;
+    --gemini-accent-3: 195 88% 31%;
+    --gemini-accent-rgb: 6 182 212;
+
+    --gemini-code-bg: 230 22% 13%;
   }
 }
 
@@ -379,48 +393,48 @@
   
   /* Gemini-specific styles */
   .gemini-gradient {
-    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 50%, #0e7490 100%);
+    background: linear-gradient(135deg, hsl(var(--gemini-accent)) 0%, hsl(var(--gemini-accent-2)) 50%, hsl(var(--gemini-accent-3)) 100%);
   }
   
   .gemini-gradient-text {
-    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 50%, #0e7490 100%);
+    background: linear-gradient(135deg, hsl(var(--gemini-accent)) 0%, hsl(var(--gemini-accent-2)) 50%, hsl(var(--gemini-accent-3)) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
   
   .gemini-shadow {
-    box-shadow: 0 4px 6px -1px rgba(6, 182, 212, 0.1), 0 2px 4px -1px rgba(6, 182, 212, 0.06);
+    box-shadow: 0 4px 6px -1px rgb(var(--gemini-accent-rgb) / 0.1), 0 2px 4px -1px rgb(var(--gemini-accent-rgb) / 0.06);
   }
   
   .gemini-shadow-lg {
-    box-shadow: 0 10px 15px -3px rgba(6, 182, 212, 0.1), 0 4px 6px -2px rgba(6, 182, 212, 0.05);
+    box-shadow: 0 10px 15px -3px rgb(var(--gemini-accent-rgb) / 0.1), 0 4px 6px -2px rgb(var(--gemini-accent-rgb) / 0.05);
   }
   
   .gemini-border {
-    border: 1px solid rgba(6, 182, 212, 0.2);
+    border: 1px solid rgb(var(--gemini-accent-rgb) / 0.2);
   }
   
   .gemini-hover:hover {
-    background-color: rgba(6, 182, 212, 0.05);
-    border-color: rgba(6, 182, 212, 0.3);
+    background-color: rgb(var(--gemini-accent-rgb) / 0.05);
+    border-color: rgb(var(--gemini-accent-rgb) / 0.3);
   }
   
   .dark .gemini-hover:hover {
-    background-color: rgba(6, 182, 212, 0.1);
-    border-color: rgba(6, 182, 212, 0.4);
+    background-color: rgb(var(--gemini-accent-rgb) / 0.1);
+    border-color: rgb(var(--gemini-accent-rgb) / 0.4);
   }
   
   /* Enhanced button styles */
   .gemini-button {
     @apply relative overflow-hidden;
-    background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+    background: linear-gradient(135deg, hsl(var(--gemini-accent-2)) 0%, hsl(var(--gemini-accent-3)) 100%);
     transition: all 0.3s ease;
   }
   
   .gemini-button:hover {
     transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 5px 15px rgb(var(--gemini-accent-rgb) / 0.3);
   }
   
   .gemini-button:active {
@@ -461,9 +475,9 @@
   /* Animated background pattern */
   .gemini-pattern {
     background-image: 
-      radial-gradient(circle at 20% 80%, rgba(6, 182, 212, 0.1) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, rgba(14, 116, 144, 0.1) 0%, transparent 50%),
-      radial-gradient(circle at 40% 40%, rgba(8, 145, 178, 0.1) 0%, transparent 50%);
+      radial-gradient(circle at 20% 80%, hsl(var(--gemini-accent) / 0.12) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, hsl(var(--gemini-accent-3) / 0.12) 0%, transparent 50%),
+      radial-gradient(circle at 40% 40%, hsl(var(--gemini-accent-2) / 0.12) 0%, transparent 50%);
     background-size: 100% 100%;
     animation: gemini-float 20s ease-in-out infinite;
   }
@@ -482,21 +496,21 @@
     display: inline-block;
     width: 20px;
     height: 20px;
-    border: 2px solid rgba(6, 182, 212, 0.3);
+    border: 2px solid hsl(var(--gemini-accent) / 0.35);
     border-radius: 50%;
-    border-top-color: #06b6d4;
+    border-top-color: hsl(var(--gemini-accent));
     animation: spin 1s ease-in-out infinite;
   }
   
   /* Enhanced focus styles */
   .gemini-focus:focus {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.2);
+    box-shadow: 0 0 0 3px hsl(var(--gemini-accent) / 0.2);
   }
   
   .gemini-focus:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.3);
+    box-shadow: 0 0 0 3px hsl(var(--gemini-accent) / 0.3);
   }
 
   /* Message layout stability */

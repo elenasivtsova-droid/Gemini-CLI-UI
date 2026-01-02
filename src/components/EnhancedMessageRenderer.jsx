@@ -90,7 +90,7 @@ const CodeBlock = ({ language, value, isDarkMode }) => {
           customStyle={{
             margin: 0,
             padding: '1rem',
-            background: isDarkMode ? '#1e1e2e' : '#ffffff',
+            background: 'hsl(var(--gemini-code-bg))',
             fontSize: '0.8125rem',
             lineHeight: '1.6',
             fontFamily: 'JetBrains Mono, Monaco, Consolas, monospace',

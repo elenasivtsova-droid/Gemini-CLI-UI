@@ -28,7 +28,7 @@ import { api } from '../utils/api';
 import { playNotificationSound } from '../utils/notificationSound';
 
 // Memoized message component to prevent unnecessary re-renders
-const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFileOpen, onShowSettings, autoExpandTools, showRawParameters }) => {
+const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFileOpen, onShowSettings, autoExpandTools, showRawParameters, providerLabel }) => {
   const isGrouped = prevMessage && prevMessage.type === message.type && 
                    prevMessage.type === 'assistant' && 
                    !prevMessage.isToolUse && !message.isToolUse;
@@ -120,7 +120,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                 </div>
               )}
               <div className="text-xs font-medium text-gray-900 dark:text-white">
-                {message.type === 'error' ? 'Error' : 'Gemini'}
+                {message.type === 'error' ? 'Error' : providerLabel}
               </div>
             </div>
           )}
@@ -673,7 +673,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                                     {selectedOption && (
                                       <div className="bg-amber-100 dark:bg-amber-800/30 rounded-lg p-3">
                                         <p className="text-amber-900 dark:text-amber-100 text-sm font-medium mb-1">
-                                          ✓ Gemini selected option {selectedOption}
+                                          ✓ {providerLabel} selected option {selectedOption}
                                         </p>
                                         <p className="text-amber-800 dark:text-amber-200 text-xs">
                                           In the CLI, you would select this option interactively using arrow keys or by typing the number.
@@ -859,7 +859,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                               ⏳ Waiting for your response in the CLI
                             </p>
                             <p className="text-amber-800 dark:text-amber-200 text-xs">
-                              Please select an option in your terminal where Gemini is running.
+                              Please select an option in your terminal where {providerLabel} is running.
                             </p>
                           </div>
                         </>
@@ -1080,6 +1080,8 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const [slashPosition, setSlashPosition] = useState(-1);
   const [visibleMessageCount, setVisibleMessageCount] = useState(100);
   const [geminiStatus, setGeminiStatus] = useState(null);
+  const providerLabel = selectedProvider === 'codex' ? 'Codex' : 'Gemini';
+  const providerInitial = providerLabel.charAt(0);
 
   useEffect(() => {
     let isActive = true;
@@ -2299,7 +2301,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center text-gray-500 dark:text-gray-400">
-          <p>Select a project to start chatting with Gemini</p>
+          <p>Select a project to start chatting with {providerLabel}</p>
         </div>
       </div>
     );
@@ -2336,7 +2338,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
         ) : chatMessages.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-gray-500 dark:text-gray-400 px-6 sm:px-4">
-              <p className="font-bold text-lg sm:text-xl mb-3">Start a conversation with Gemini</p>
+              <p className="font-bold text-lg sm:text-xl mb-3">Start a conversation with {providerLabel}</p>
               <p className="text-sm sm:text-base leading-relaxed">
                 Ask questions about your code, request changes, or get help with development tasks
               </p>
@@ -2370,6 +2372,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                   onShowSettings={onShowSettings}
                   autoExpandTools={autoExpandTools}
                   showRawParameters={showRawParameters}
+                  providerLabel={providerLabel}
                 />
               );
             })}
@@ -2381,9 +2384,9 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
             <div className="w-full">
               <div className="flex items-center space-x-3 mb-2">
                 <div className="w-8 h-8 bg-gray-600 rounded-full flex items-center justify-center text-white text-sm flex-shrink-0">
-                  G
+                  {providerInitial}
                 </div>
-                <div className="text-sm font-medium text-gray-900 dark:text-white">Gemini</div>
+                <div className="text-sm font-medium text-gray-900 dark:text-white">{providerLabel}</div>
                 {/* Abort button removed - functionality not yet implemented at backend */}
               </div>
               <div className="w-full text-sm text-gray-500 dark:text-gray-400 pl-3 sm:pl-0">

@@ -84,7 +84,7 @@ const CodeBlock = ({ language, value, inline, isDarkMode, className }) => {
           customStyle={{
             margin: 0,
             padding: '0.75rem',
-            background: isDarkMode ? '#1a1b26' : '#f8f9fa',
+            background: 'hsl(var(--gemini-code-bg))',
             fontSize: '0.8125rem',
             lineHeight: '1.5',
           }}

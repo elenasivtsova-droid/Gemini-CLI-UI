@@ -89,20 +89,20 @@ function CodeEditor({ file, onClose, projectPath }) {
   // Diff decoration theme
   const diffTheme = EditorView.theme({
     '.diff-removed-light': {
-      backgroundColor: '#fef2f2',
-      borderLeft: '3px solid #ef4444'
+      backgroundColor: 'hsl(var(--destructive) / 0.12)',
+      borderLeft: '3px solid hsl(var(--destructive))'
     },
     '.diff-removed-dark': {
-      backgroundColor: 'rgba(239, 68, 68, 0.1)',
-      borderLeft: '3px solid #ef4444'
+      backgroundColor: 'hsl(var(--destructive) / 0.15)',
+      borderLeft: '3px solid hsl(var(--destructive))'
     },
     '.diff-added-light': {
-      backgroundColor: '#f0fdf4',
-      borderLeft: '3px solid #22c55e'
+      backgroundColor: 'hsl(142 76% 36% / 0.12)',
+      borderLeft: '3px solid hsl(142 76% 36%)'
     },
     '.diff-added-dark': {
-      backgroundColor: 'rgba(34, 197, 94, 0.1)',
-      borderLeft: '3px solid #22c55e'
+      backgroundColor: 'hsl(142 76% 36% / 0.15)',
+      borderLeft: '3px solid hsl(142 76% 36%)'
     }
   });
 
