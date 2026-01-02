@@ -1,4 +1,5 @@
 import { spawn } from 'child_process';
+import pty from 'node-pty';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -76,6 +77,24 @@ function stripOllamaSpinner(output) {
   return output.replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '');
 }
 
+function sendBmadInput(sessionId, input) {
+  const process = activeGeminiProcesses.get(sessionId);
+  if (!process || process.cliProvider !== 'bmad') {
+    return false;
+  }
+  if (typeof input === 'string') {
+    const payload = input.endsWith('\n') || input.endsWith('\r') ? input : `${input}\r`;
+    if (typeof process.write === 'function') {
+      process.write(payload);
+    } else if (process.stdin) {
+      process.stdin.write(payload);
+    }
+    sessionManager.addMessage(sessionId, 'user', input);
+    return true;
+  }
+  return false;
+}
+
 async function spawnGemini(command, options = {}, ws) {
   return new Promise(async (resolve, reject) => {
     const { sessionId, projectPath, cwd, resume, toolsSettings, permissionMode, images } = options;
@@ -85,6 +104,13 @@ async function spawnGemini(command, options = {}, ws) {
     const cliProvider = normalizeProvider(options.provider);
     const providerLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : cliProvider === 'ollama' ? 'Ollama' : cliProvider === 'bmad' ? 'BMAD' : 'Gemini';
     let pendingExternalSessionId = null;
+
+    if (cliProvider === 'bmad' && sessionId && activeGeminiProcesses.has(sessionId)) {
+      if (sendBmadInput(sessionId, command || '')) {
+        resolve();
+        return;
+      }
+    }
     
     // Process images if provided
     
@@ -357,6 +383,100 @@ async function spawnGemini(command, options = {}, ws) {
       // eslint-disable-next-line no-console
       console.log('[cli-spawn] PATH=', spawnEnv.PATH);
     }
+    if (cliProvider === 'bmad') {
+      const bmadProcess = pty.spawn(geminiPath, args, {
+        name: 'xterm-256color',
+        cols: 120,
+        rows: 30,
+        cwd: workingDir,
+        env: spawnEnv
+      });
+
+      const processKey = capturedSessionId || sessionId || Date.now().toString();
+      bmadProcess.cliProvider = 'bmad';
+      bmadProcess.sessionId = processKey;
+      activeGeminiProcesses.set(processKey, bmadProcess);
+
+      if (command && capturedSessionId) {
+        sessionManager.addMessage(capturedSessionId, 'user', command);
+      }
+
+      let responseHandler = null;
+      if (ws) {
+        responseHandler = new GeminiResponseHandler(ws, {
+          partialDelay: 150,
+          maxWaitTime: 800,
+          minBufferSize: 1
+        });
+      }
+
+      bmadProcess.onData((data) => {
+        const sanitizedOutput = sanitizeCliOutput(data);
+        if (!sanitizedOutput.trim()) {
+          return;
+        }
+
+        fullResponse += (fullResponse ? '\n' : '') + sanitizedOutput;
+
+        if (responseHandler) {
+          responseHandler.processData(sanitizedOutput);
+        } else if (ws) {
+          ws.send(JSON.stringify({
+            type: 'gemini-response',
+            data: {
+              type: 'message',
+              content: sanitizedOutput
+            }
+          }));
+        }
+
+        if (!sessionId && !sessionCreatedSent && !capturedSessionId) {
+          const sessionPrefix = 'bmad';
+          capturedSessionId = `${sessionPrefix}_${Date.now()}`;
+          sessionCreatedSent = true;
+
+          sessionManager.createSession(capturedSessionId, cwd || process.cwd(), cliProvider);
+          if (command) {
+            sessionManager.addMessage(capturedSessionId, 'user', command);
+          }
+
+          if (processKey !== capturedSessionId) {
+            activeGeminiProcesses.delete(processKey);
+            activeGeminiProcesses.set(capturedSessionId, bmadProcess);
+            bmadProcess.sessionId = capturedSessionId;
+          }
+
+          if (ws) {
+            ws.send(JSON.stringify({
+              type: 'session-created',
+              sessionId: capturedSessionId
+            }));
+          }
+        }
+      });
+
+      bmadProcess.onExit(({ exitCode }) => {
+        const finalSessionId = capturedSessionId || sessionId || processKey;
+        activeGeminiProcesses.delete(finalSessionId);
+
+        if (ws) {
+          ws.send(JSON.stringify({
+            type: 'gemini-complete',
+            exitCode: exitCode ?? 0,
+            isNewSession: !sessionId && !!command
+          }));
+        }
+
+        if (exitCode === 0 || exitCode === undefined) {
+          resolve();
+        } else {
+          reject(new Error(`${providerLabel} CLI exited with code ${exitCode}`));
+        }
+      });
+
+      return;
+    }
+
     const geminiProcess = spawn(geminiPath, args, {
       cwd: workingDir,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -745,5 +865,6 @@ function abortGeminiSession(sessionId) {
 
 export {
   spawnGemini,
-  abortGeminiSession
+  abortGeminiSession,
+  sendBmadInput
 };

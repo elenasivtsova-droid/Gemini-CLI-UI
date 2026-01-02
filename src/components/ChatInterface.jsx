@@ -1062,6 +1062,8 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const [imageErrors, setImageErrors] = useState(new Map());
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const inputContainerRef = useRef(null);
+  const restoreFocusAfterLoadingRef = useRef(false);
   const scrollContainerRef = useRef(null);
   const [debouncedInput, setDebouncedInput] = useState('');
   const [showFileDropdown, setShowFileDropdown] = useState(false);
@@ -1454,6 +1456,18 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
     }
   }, [isInputFocused, onInputFocusChange]);
 
+  useEffect(() => {
+    if (isLoading || !restoreFocusAfterLoadingRef.current) return;
+    restoreFocusAfterLoadingRef.current = false;
+    const activeElement = document.activeElement;
+    const shouldRestoreFocus = !activeElement ||
+      activeElement === document.body ||
+      (inputContainerRef.current && inputContainerRef.current.contains(activeElement));
+    if (shouldRestoreFocus && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isLoading]);
+
   // Persist input draft to localStorage
   useEffect(() => {
     if (selectedProject && input !== '') {
@@ -1673,6 +1687,11 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                 }));
               }
             }
+          }
+
+          if (selectedProvider === 'bmad') {
+            setIsLoading(false);
+            setGeminiStatus(null);
           }
           break;
           
@@ -2041,6 +2060,13 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim() || isLoading || !selectedProject) return;
+
+    const activeElement = document.activeElement;
+    restoreFocusAfterLoadingRef.current = !!(
+      inputContainerRef.current &&
+      activeElement &&
+      inputContainerRef.current.contains(activeElement)
+    );
 
     // Upload images first if any
     let uploadedImages = [];
@@ -2752,6 +2778,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
             </div>
           )}
           
+          <div ref={inputContainerRef}>
           <div {...getRootProps()} className={`chat-input-container relative bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-600 focus-within:ring-2 focus-within:ring-blue-500 dark:focus-within:ring-blue-500 focus-within:border-blue-500 transition-all duration-200 ${isTextareaExpanded ? 'chat-input-expanded' : ''}`}>
             <input {...getInputProps()} />
             <textarea
@@ -2869,6 +2896,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                 />
               </svg>
             </button>
+          </div>
           </div>
           {/* Hint text */}
           <div className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2 hidden sm:block">

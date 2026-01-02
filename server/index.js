@@ -37,7 +37,7 @@ import fetch from 'node-fetch';
 import mime from 'mime-types';
 
 import { getProjects, getSessions, getSessionMessages, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
-import { spawnGemini, abortGeminiSession } from './gemini-cli.js';
+import { spawnGemini, abortGeminiSession, sendBmadInput } from './gemini-cli.js';
 import { buildSpawnEnv, getCliCommand, getCliInfo, getCliProvider, getProjectsRoot, normalizeProvider } from './cli-config.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
@@ -484,6 +484,10 @@ function handleChatConnection(ws) {
         // console.log('💬 User message:', data.command || '[Continue/Resume]');
         // console.log('📁 Project:', data.options?.projectPath || 'Unknown');
         // console.log('🔄 Session:', data.options?.sessionId ? 'Resume' : 'New');
+        const provider = normalizeProvider(data.options?.provider || null);
+        if (provider === 'bmad' && data.options?.sessionId && sendBmadInput(data.options.sessionId, data.command || '')) {
+          return;
+        }
         await spawnGemini(data.command, data.options, ws);
       } else if (data.type === 'abort-session') {
         // console.log('🛑 Abort session request:', data.sessionId);
