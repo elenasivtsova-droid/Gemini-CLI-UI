@@ -69,6 +69,7 @@ function Sidebar({
   const [generatingSummary, setGeneratingSummary] = useState({});
   const [searchFilter, setSearchFilter] = useState('');
 
+  const safeProjects = Array.isArray(projects) ? projects : [];
   
   // Starred projects state - persisted in localStorage
   const [starredProjects, setStarredProjects] = useState(() => {
@@ -118,9 +119,9 @@ function Sidebar({
 
   // Mark sessions as loaded when projects come in
   useEffect(() => {
-    if (projects.length > 0 && !isLoading) {
+    if (safeProjects.length > 0 && !isLoading) {
       const newLoaded = new Set();
-      projects.forEach(project => {
+      safeProjects.forEach(project => {
         if (project.sessions && project.sessions.length >= 0) {
           newLoaded.add(project.name);
         }
@@ -224,7 +225,7 @@ function Sidebar({
   };
 
   // Combined sorting: starred projects first, then by selected order
-  const sortedProjects = [...projects].sort((a, b) => {
+  const sortedProjects = [...safeProjects].sort((a, b) => {
     const aStarred = isProjectStarred(a.name);
     const bStarred = isProjectStarred(b.name);
     
@@ -608,7 +609,7 @@ function Sidebar({
       )}
       
       {/* Search Filter */}
-      {projects.length > 0 && !isLoading && (
+      {safeProjects.length > 0 && !isLoading && (
         <div className="px-3 md:px-4 py-2 border-b border-border">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -644,7 +645,7 @@ function Sidebar({
                 Fetching your Gemini projects and sessions
               </p>
             </div>
-          ) : projects.length === 0 ? (
+          ) : safeProjects.length === 0 ? (
             <div className="text-center py-12 md:py-8 px-4">
               <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center mx-auto mb-4 md:mb-3">
                 <Folder className="w-6 h-6 text-muted-foreground" />

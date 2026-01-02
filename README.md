@@ -52,7 +52,9 @@ A desktop and mobile UI for [Gemini CLI](https://github.com/google-gemini/gemini
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) v20 or higher
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed and configured
+- One of:
+  - [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed and configured
+  - [Codex CLI](https://github.com/openai/codex) installed and configured
 
 ### Installation
 
@@ -75,6 +77,29 @@ cp .env.example .env
 
 **Note**: The `.env` file has been removed for security. Always copy `.env.example` to `.env` when using and modify settings as needed.
 
+#### CLI Provider (Gemini or Codex)
+
+By default the UI targets Gemini CLI. To use Codex CLI, set:
+
+```bash
+CLI_PROVIDER=codex
+```
+
+Optional overrides:
+
+```bash
+CODEX_PATH=codex        # custom path to Codex CLI binary
+CODEX_HOME=~/.codex     # Codex home (config, sessions)
+CLI_UI_HOME=~/.codex/cli-ui  # UI metadata (projects/sessions)
+```
+
+To switch back to Gemini:
+
+```bash
+CLI_PROVIDER=gemini
+GEMINI_PATH=gemini
+```
+
 4. **Start the application:**
 ```bash
 # Development mode (with hot reload)
@@ -87,11 +112,11 @@ The application will start at the port you specified in your .env
 
 ## Security & Tools Configuration
 
-**🔒 Important Notice**: All Gemini CLI tools are **disabled by default**. This prevents potentially harmful operations from running automatically.
+**🔒 Important Notice**: All CLI tools are **disabled by default**. This prevents potentially harmful operations from running automatically.
 
 ### Enabling Tools
 
-To use Gemini CLI's full functionality, you'll need to manually enable tools:
+To use full CLI functionality, you'll need to manually enable tools:
 
 1. **Open Tools Settings** - Click the gear icon in the sidebar
 2. **Enable Selectively** - Turn on only the tools you need
@@ -99,7 +124,7 @@ To use Gemini CLI's full functionality, you'll need to manually enable tools:
 
 ### About YOLO Mode
 
-YOLO mode ("You Only Live Once") is equivalent to Gemini CLI's `--yolo` flag, skipping all confirmation prompts. This mode speeds up your work but should be used with caution.
+YOLO mode ("You Only Live Once") is equivalent to Gemini CLI's `--yolo` flag. For Codex CLI, this maps to `codex exec --full-auto --sandbox danger-full-access`. These modes skip confirmations and should be used with caution.
 
 **Recommended approach**: Start with basic tools enabled and add more as needed. You can always adjust these settings later.
 
@@ -112,6 +137,8 @@ The UI automatically discovers Gemini CLI projects from `~/.gemini/projects/` an
 - **Visual Project Browser** - All available projects with metadata and session counts
 - **Project Actions** - Rename, delete, and organize projects
 - **Smart Navigation** - Quick access to recent projects and sessions
+
+When `CLI_PROVIDER=codex`, UI metadata lives under `~/.codex/cli-ui/` by default (configurable via `CLI_UI_HOME`).
 
 #### Chat Interface
 - **Use responsive chat or Gemini CLI** - You can either use the adapted chat interface or use the shell button to connect to Gemini CLI

@@ -1,12 +1,12 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import os from 'os';
+import { getCliProvider, getSessionsRoot } from './cli-config.js';
 
 class SessionManager {
   constructor() {
     // Store sessions in memory with conversation history
     this.sessions = new Map();
-    this.sessionsDir = path.join(os.homedir(), '.gemini', 'sessions');
+    this.sessionsDir = getSessionsRoot();
     this.initSessionsDir();
   }
 
@@ -19,10 +19,12 @@ class SessionManager {
   }
 
   // Create a new session
-  createSession(sessionId, projectPath) {
+  createSession(sessionId, projectPath, providerOverride = null) {
     const session = {
       id: sessionId,
       projectPath: projectPath,
+      provider: providerOverride || getCliProvider(),
+      externalSessionId: null,
       messages: [],
       createdAt: new Date(),
       lastActivity: new Date()
@@ -60,6 +62,19 @@ class SessionManager {
   // Get session by ID
   getSession(sessionId) {
     return this.sessions.get(sessionId);
+  }
+
+  // Track provider-specific session ID (e.g., Codex thread ID)
+  setExternalSessionId(sessionId, externalSessionId) {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.externalSessionId = externalSessionId;
+    this.saveSession(sessionId);
+  }
+
+  getExternalSessionId(sessionId) {
+    const session = this.sessions.get(sessionId);
+    return session ? session.externalSessionId : null;
   }
 
   // Get all sessions for a project

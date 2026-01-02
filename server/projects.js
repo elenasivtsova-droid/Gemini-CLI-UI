@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import fsSync from 'fs';
 import path from 'path';
 import readline from 'readline';
+import { getProjectConfigPath, getProjectsRoot } from './cli-config.js';
 
 // Cache for extracted project directories
 const projectDirectoryCache = new Map();
@@ -14,8 +15,8 @@ function clearProjectDirectoryCache() {
 }
 
 // Load project configuration file
-async function loadProjectConfig() {
-  const configPath = path.join(process.env.HOME, '.gemini', 'project-config.json');
+async function loadProjectConfig(providerOverride = null) {
+  const configPath = getProjectConfigPath(providerOverride);
   try {
     const configData = await fs.readFile(configPath, 'utf8');
     return JSON.parse(configData);
@@ -26,8 +27,9 @@ async function loadProjectConfig() {
 }
 
 // Save project configuration file
-async function saveProjectConfig(config) {
-  const configPath = path.join(process.env.HOME, '.gemini', 'project-config.json');
+async function saveProjectConfig(config, providerOverride = null) {
+  const configPath = getProjectConfigPath(providerOverride);
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
   await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
 }
 
@@ -66,14 +68,15 @@ async function generateDisplayName(projectName, actualProjectDir = null) {
 }
 
 // Extract the actual project directory from JSONL sessions (with caching)
-async function extractProjectDirectory(projectName) {
+async function extractProjectDirectory(projectName, providerOverride = null) {
   // Check cache first
-  if (projectDirectoryCache.has(projectName)) {
-    return projectDirectoryCache.get(projectName);
+  const cacheKey = `${providerOverride || 'default'}::${projectName}`;
+  if (projectDirectoryCache.has(cacheKey)) {
+    return projectDirectoryCache.get(cacheKey);
   }
   
   
-  const projectDir = path.join(process.env.HOME, '.gemini', 'projects', projectName);
+  const projectDir = path.join(getProjectsRoot(providerOverride), projectName);
   const cwdCounts = new Map();
   let latestTimestamp = 0;
   let latestCwd = null;
@@ -172,7 +175,7 @@ async function extractProjectDirectory(projectName) {
     extractedPath = extractedPath.replace(/[^\x20-\x7E]/g, '').trim();
     
     // Cache the result
-    projectDirectoryCache.set(projectName, extractedPath);
+    projectDirectoryCache.set(cacheKey, extractedPath);
     
     return extractedPath;
     
@@ -193,19 +196,20 @@ async function extractProjectDirectory(projectName) {
     }
     
     // Cache the fallback result too
-    projectDirectoryCache.set(projectName, extractedPath);
+    projectDirectoryCache.set(cacheKey, extractedPath);
     
     return extractedPath;
   }
 }
 
-async function getProjects() {
-  const geminiDir = path.join(process.env.HOME, '.gemini', 'projects');
-  const config = await loadProjectConfig();
+async function getProjects(providerOverride = null) {
+  const geminiDir = getProjectsRoot(providerOverride);
+  const config = await loadProjectConfig(providerOverride);
   const projects = [];
   const existingProjects = new Set();
   
   try {
+    await fs.mkdir(geminiDir, { recursive: true });
     // First, get existing projects from the file system
     const entries = await fs.readdir(geminiDir, { withFileTypes: true });
     
@@ -215,7 +219,7 @@ async function getProjects() {
         const projectPath = path.join(geminiDir, entry.name);
         
         // Extract actual project directory from JSONL sessions
-        const actualProjectDir = await extractProjectDirectory(entry.name);
+        const actualProjectDir = await extractProjectDirectory(entry.name, providerOverride);
         
         // Get display name from config or generate one
         const customName = config[entry.name]?.displayName;
@@ -287,8 +291,8 @@ async function getProjects() {
   return projects;
 }
 
-async function getSessions(projectName, limit = 5, offset = 0) {
-  const projectDir = path.join(process.env.HOME, '.gemini', 'projects', projectName);
+async function getSessions(projectName, limit = 5, offset = 0, providerOverride = null) {
+  const projectDir = path.join(getProjectsRoot(providerOverride), projectName);
   
   try {
     const files = await fs.readdir(projectDir);
@@ -427,8 +431,8 @@ async function parseJsonlSessions(filePath) {
 }
 
 // Get messages for a specific session
-async function getSessionMessages(projectName, sessionId) {
-  const projectDir = path.join(process.env.HOME, '.gemini', 'projects', projectName);
+async function getSessionMessages(projectName, sessionId, providerOverride = null) {
+  const projectDir = path.join(getProjectsRoot(providerOverride), projectName);
   
   try {
     const files = await fs.readdir(projectDir);
@@ -474,8 +478,8 @@ async function getSessionMessages(projectName, sessionId) {
 }
 
 // Rename a project's display name
-async function renameProject(projectName, newDisplayName) {
-  const config = await loadProjectConfig();
+async function renameProject(projectName, newDisplayName, providerOverride = null) {
+  const config = await loadProjectConfig(providerOverride);
   
   if (!newDisplayName || newDisplayName.trim() === '') {
     // Remove custom name if empty, will fall back to auto-generated
@@ -487,13 +491,13 @@ async function renameProject(projectName, newDisplayName) {
     };
   }
   
-  await saveProjectConfig(config);
+  await saveProjectConfig(config, providerOverride);
   return true;
 }
 
 // Delete a session from a project
-async function deleteSession(projectName, sessionId) {
-  const projectDir = path.join(process.env.HOME, '.gemini', 'projects', projectName);
+async function deleteSession(projectName, sessionId, providerOverride = null) {
+  const projectDir = path.join(getProjectsRoot(providerOverride), projectName);
   
   try {
     const files = await fs.readdir(projectDir);
@@ -555,8 +559,8 @@ async function isProjectEmpty(projectName) {
 }
 
 // Delete an empty project
-async function deleteProject(projectName) {
-  const projectDir = path.join(process.env.HOME, '.gemini', 'projects', projectName);
+async function deleteProject(projectName, providerOverride = null) {
+  const projectDir = path.join(getProjectsRoot(providerOverride), projectName);
   
   try {
     // First check if the project is empty
@@ -569,9 +573,9 @@ async function deleteProject(projectName) {
     await fs.rm(projectDir, { recursive: true, force: true });
     
     // Remove from project config
-    const config = await loadProjectConfig();
+    const config = await loadProjectConfig(providerOverride);
     delete config[projectName];
-    await saveProjectConfig(config);
+    await saveProjectConfig(config, providerOverride);
     
     return true;
   } catch (error) {
@@ -581,7 +585,7 @@ async function deleteProject(projectName) {
 }
 
 // Add a project manually to the config (create folder if needed)
-async function addProjectManually(projectPath, displayName = null) {
+async function addProjectManually(projectPath, displayName = null, providerOverride = null) {
   const absolutePath = path.resolve(projectPath);
   
   try {
@@ -606,8 +610,8 @@ async function addProjectManually(projectPath, displayName = null) {
   const projectName = Buffer.from(absolutePath).toString('base64').replace(/[/+=]/g, '_');
   
   // Check if project already exists in config or as a folder
-  const config = await loadProjectConfig();
-  const projectDir = path.join(process.env.HOME, '.gemini', 'projects', projectName);
+  const config = await loadProjectConfig(providerOverride);
+  const projectDir = path.join(getProjectsRoot(providerOverride), projectName);
   
   try {
     await fs.access(projectDir);
@@ -632,7 +636,7 @@ async function addProjectManually(projectPath, displayName = null) {
     config[projectName].displayName = displayName;
   }
   
-  await saveProjectConfig(config);
+  await saveProjectConfig(config, providerOverride);
   
   // Create the project directory
   try {

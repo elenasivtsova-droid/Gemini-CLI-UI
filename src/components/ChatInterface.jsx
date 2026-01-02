@@ -1032,6 +1032,11 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
       return false;
     }
   });
+  const [cliInfo, setCliInfo] = useState({
+    provider: 'gemini',
+    defaultModel: 'gemini-2.5-flash',
+    models: []
+  });
   const [selectedModel, setSelectedModel] = useState(() => {
     try {
       const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
@@ -1067,6 +1072,52 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const [slashPosition, setSlashPosition] = useState(-1);
   const [visibleMessageCount, setVisibleMessageCount] = useState(100);
   const [geminiStatus, setGeminiStatus] = useState(null);
+
+  useEffect(() => {
+    let isActive = true;
+    const loadCliInfo = async () => {
+      try {
+        const response = await api.cliInfo();
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isActive) return;
+        const defaultModel = data.defaultModel || 'gemini-2.5-flash';
+        const models = Array.isArray(data.models) ? data.models : [];
+        const provider = data.provider || 'gemini';
+        setCliInfo({
+          provider,
+          defaultModel,
+          models
+        });
+        
+        let settingsProvider = provider;
+        try {
+          const savedSettings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
+          settingsProvider = savedSettings.selectedProvider || provider;
+        } catch (e) {
+        }
+        
+        const hasModel = models.length === 0 || models.some(model => model.value === selectedModel);
+        if (settingsProvider === provider && (!selectedModel || !hasModel)) {
+          setSelectedModel(defaultModel);
+          try {
+            const savedSettings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
+            localStorage.setItem('gemini-tools-settings', JSON.stringify({
+              ...savedSettings,
+              selectedModel: defaultModel
+            }));
+          } catch (e) {
+          }
+        }
+      } catch (error) {
+        // console.error('Failed to load CLI info:', error);
+      }
+    };
+    loadCliInfo();
+    return () => {
+      isActive = false;
+    };
+  }, [cliInfo.defaultModel]);
 
 
   // Memoized diff calculation to prevent recalculating on every render
@@ -1377,10 +1428,15 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
       try {
         const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
         setIsYoloMode(settings.skipPermissions || false);
-        setSelectedModel(settings.selectedModel || 'gemini-2.5-flash');
+        const fallbackModel = cliInfo.defaultModel || 'gemini-2.5-flash';
+        const candidateModel = settings.selectedModel || fallbackModel;
+        const provider = settings.selectedProvider || cliInfo.provider || 'gemini';
+        const shouldValidate = provider === (cliInfo.provider || 'gemini');
+        const hasModel = !shouldValidate || cliInfo.models.length === 0 || cliInfo.models.some(model => model.value === candidateModel);
+        setSelectedModel(hasModel ? candidateModel : fallbackModel);
       } catch (e) {
         setIsYoloMode(false);
-        setSelectedModel('gemini-2.5-flash');
+        setSelectedModel(cliInfo.defaultModel || 'gemini-2.5-flash');
       }
     };
     
@@ -2024,12 +2080,18 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
           // Merge saved allowed tools with critical tools
           const savedAllowed = settings.allowedTools || [];
           const mergedAllowed = [...new Set([...savedAllowed, ...criticalTools])];
+          const provider = settings.selectedProvider || cliInfo.provider || 'gemini';
           
+          const fallbackModel = cliInfo.defaultModel || 'gemini-2.5-flash';
+          const candidateModel = settings.selectedModel || fallbackModel;
+          const shouldValidate = provider === (cliInfo.provider || 'gemini');
+          const hasModel = !shouldValidate || cliInfo.models.length === 0 || cliInfo.models.some(model => model.value === candidateModel);
           return {
             allowedTools: mergedAllowed,
             disallowedTools: settings.disallowedTools || [],
             skipPermissions: settings.skipPermissions || false,
-            selectedModel: settings.selectedModel || 'gemini-2.5-flash'
+            selectedModel: hasModel ? candidateModel : fallbackModel,
+            provider
           };
         }
       } catch (error) {
@@ -2039,7 +2101,8 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
         allowedTools: criticalTools,
         disallowedTools: [],
         skipPermissions: false,
-        selectedModel: 'gemini-2.5-flash'
+        selectedModel: cliInfo.defaultModel || 'gemini-2.5-flash',
+        provider: cliInfo.provider || 'gemini'
       };
     };
 
@@ -2056,7 +2119,8 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
         resume: !!currentSessionId,
         toolsSettings: toolsSettings,
         permissionMode: permissionMode,
-        model: toolsSettings.selectedModel || 'gemini-2.5-flash',
+        model: toolsSettings.selectedModel || cliInfo.defaultModel || 'gemini-2.5-flash',
+        provider: toolsSettings.provider || cliInfo.provider || 'gemini',
         images: uploadedImages // Pass images to backend
       }
     });

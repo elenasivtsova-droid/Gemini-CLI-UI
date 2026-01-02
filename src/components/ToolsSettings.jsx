@@ -5,6 +5,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { Badge } from './ui/badge';
 import { X, Plus, Settings, Shield, AlertTriangle, Moon, Sun, Server, Edit3, Trash2, Play, Globe, Terminal, Zap, Volume2 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { api } from '../utils/api';
 
 function ToolsSettings({ isOpen, onClose }) {
   const { isDarkMode, toggleDarkMode } = useTheme();
@@ -42,8 +43,15 @@ function ToolsSettings({ isOpen, onClose }) {
   const [mcpServerTools, setMcpServerTools] = useState({});
   const [mcpToolsLoading, setMcpToolsLoading] = useState({});
   const [activeTab, setActiveTab] = useState('tools');
+  const [selectedProvider, setSelectedProvider] = useState('gemini');
   const [selectedModel, setSelectedModel] = useState('gemini-2.5-flash');
   const [enableNotificationSound, setEnableNotificationSound] = useState(false);
+  const [cliInfo, setCliInfo] = useState({
+    provider: 'gemini',
+    displayName: 'Gemini CLI',
+    defaultModel: 'gemini-2.5-flash',
+    models: []
+  });
 
   // Common tool patterns
   const commonTools = [
@@ -69,7 +77,7 @@ function ToolsSettings({ isOpen, onClose }) {
   ];
   
   // Available Gemini models (tested and verified)
-  const availableModels = [
+  const defaultGeminiModels = [
     { value: 'gemini-3-pro-preview', label: 'Gemini 3.0 Pro', description: 'Next generation reasoning and capabilities' },
     { value: 'gemini-3.0-flash', label: 'Gemini 3.0 Flash', description: 'Ultra-fast next gen model' },
     { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Fast and efficient latest model (Recommended)' },
@@ -79,6 +87,57 @@ function ToolsSettings({ isOpen, onClose }) {
     { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Balanced performance and capabilities' },
     { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'Fast and cost-effective' }
   ];
+  const [availableModels, setAvailableModels] = useState(defaultGeminiModels);
+  const defaultCodexModels = [
+    { value: 'gpt-5.1-codex-max', label: 'GPT-5.1 Codex Max', description: 'Largest Codex reasoning profile and tool depth' },
+    { value: 'gpt-5.1-codex', label: 'GPT-5.1 Codex', description: 'Balanced Codex model for coding tasks' },
+    { value: 'gpt-5.1', label: 'GPT-5.1', description: 'General-purpose GPT-5.1 for mixed workloads' },
+    { value: 'gpt-5.2', label: 'GPT-5.2', description: 'Latest general model with strong reasoning' },
+    { value: 'o3', label: 'o3', description: 'Reasoning-focused model' },
+    { value: 'o4-mini', label: 'o4-mini', description: 'Fast, lightweight reasoning model' }
+  ];
+  const defaultModelByProvider = {
+    gemini: 'gemini-2.5-flash',
+    codex: 'gpt-5.1-codex-max'
+  };
+
+  useEffect(() => {
+    let isActive = true;
+    const loadCliInfo = async () => {
+      try {
+        const response = await api.cliInfo();
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!isActive) return;
+        
+        const normalized = {
+          provider: data.provider || 'gemini',
+          displayName: data.displayName || 'Gemini CLI',
+          defaultModel: data.defaultModel || 'gemini-2.5-flash',
+          models: Array.isArray(data.models) && data.models.length > 0 ? data.models : defaultGeminiModels
+        };
+        setCliInfo(normalized);
+      } catch (error) {
+        // console.error('Failed to load CLI info:', error);
+      }
+    };
+    loadCliInfo();
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const models = selectedProvider === 'codex' ? defaultCodexModels : defaultGeminiModels;
+    setAvailableModels(models);
+    
+    if (!models.find(model => model.value === selectedModel)) {
+      const fallbackModel = defaultModelByProvider[selectedProvider] || models[0]?.value;
+      if (fallbackModel) {
+        setSelectedModel(fallbackModel);
+      }
+    }
+  }, [selectedProvider, selectedModel]);
 
   // MCP API functions
   const fetchMcpServers = async () => {
@@ -307,7 +366,15 @@ function ToolsSettings({ isOpen, onClose }) {
         setDisallowedTools(settings.disallowedTools || []);
         setSkipPermissions(settings.skipPermissions !== undefined ? settings.skipPermissions : true);
         setProjectSortOrder(settings.projectSortOrder || 'name');
-        setSelectedModel(settings.selectedModel || 'gemini-2.5-flash');
+        const fallbackProvider = cliInfo.provider || 'gemini';
+        const nextProvider = settings.selectedProvider || fallbackProvider;
+        setSelectedProvider(nextProvider);
+        
+        const models = nextProvider === 'codex' ? defaultCodexModels : defaultGeminiModels;
+        const fallbackModel = defaultModelByProvider[nextProvider] || cliInfo.defaultModel || 'gemini-2.5-flash';
+        const candidateModel = settings.selectedModel || fallbackModel;
+        const hasModel = models.some(model => model.value === candidateModel);
+        setSelectedModel(hasModel ? candidateModel : fallbackModel);
         setEnableNotificationSound(settings.enableNotificationSound || false);
       } else {
         // Set defaults
@@ -315,6 +382,9 @@ function ToolsSettings({ isOpen, onClose }) {
         setDisallowedTools([]);
         setSkipPermissions(true);
         setProjectSortOrder('name');
+        const fallbackProvider = cliInfo.provider || 'gemini';
+        setSelectedProvider(fallbackProvider);
+        setSelectedModel(defaultModelByProvider[fallbackProvider] || cliInfo.defaultModel || 'gemini-2.5-flash');
       }
 
       // Load MCP servers from API
@@ -340,6 +410,7 @@ function ToolsSettings({ isOpen, onClose }) {
         skipPermissions,
         projectSortOrder,
         selectedModel,
+        selectedProvider,
         enableNotificationSound,
         lastUpdated: new Date().toISOString()
       };
@@ -665,7 +736,42 @@ function ToolsSettings({ isOpen, onClose }) {
               <div className="flex items-center gap-3">
                 <Zap className="w-5 h-5 text-cyan-500" />
                 <h3 className="text-lg font-medium text-foreground">
-                  Gemini Model
+                  CLI Provider
+                </h3>
+              </div>
+              <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium text-foreground">
+                    Select Provider
+                  </label>
+                  <select
+                    value={selectedProvider}
+                    onChange={(e) => setSelectedProvider(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:ring-cyan-500 focus:border-cyan-500"
+                  >
+                    <option value="gemini">Gemini CLI</option>
+                    <option value="codex">Codex CLI</option>
+                  </select>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    {selectedProvider === 'codex'
+                      ? 'Use OpenAI Codex CLI for coding sessions.'
+                      : 'Use Google Gemini CLI for coding sessions.'}
+                  </div>
+                  {selectedProvider !== cliInfo.provider && (
+                    <div className="text-xs text-orange-600 dark:text-orange-300">
+                      Provider mismatch: server is running {cliInfo.displayName}. Project discovery uses the server provider; restart the server with `CLI_PROVIDER={selectedProvider}` for full switching.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Model Selection */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <Zap className="w-5 h-5 text-cyan-500" />
+                <h3 className="text-lg font-medium text-foreground">
+                  {selectedProvider === 'codex' ? 'Codex Model' : 'Gemini Model'}
                 </h3>
               </div>
               <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
@@ -709,10 +815,12 @@ function ToolsSettings({ isOpen, onClose }) {
                   />
                   <div>
                     <div className="font-medium text-orange-900 dark:text-orange-100">
-                      YOLO mode - Skip all confirmations
+                      {selectedProvider === 'codex' ? 'Full auto - Skip approvals' : 'YOLO mode - Skip all confirmations'}
                     </div>
                     <div className="text-sm text-orange-700 dark:text-orange-300">
-                      Equivalent to --yolo flag (use with caution)
+                      {selectedProvider === 'codex'
+                        ? 'Equivalent to --full-auto --sandbox danger-full-access'
+                        : 'Equivalent to --yolo flag (use with caution)'}
                     </div>
                   </div>
                 </label>

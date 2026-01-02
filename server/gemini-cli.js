@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 import sessionManager from './sessionManager.js';
 import GeminiResponseHandler from './gemini-response-handler.js';
+import { getCliCommand, getCliInfo, normalizeProvider } from './cli-config.js';
 
 let activeGeminiProcesses = new Map(); // Track active processes by session ID
 
@@ -13,6 +14,8 @@ async function spawnGemini(command, options = {}, ws) {
     let capturedSessionId = sessionId; // Track session ID throughout the process
     let sessionCreatedSent = false; // Track if we've already sent session-created event
     let fullResponse = ''; // Accumulate the full response
+    const cliProvider = normalizeProvider(options.provider);
+    let pendingExternalSessionId = null;
     
     // Process images if provided
     
@@ -25,18 +28,21 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Use tools settings
     
-    // Build Gemini CLI command
+    // Build CLI command
     const args = [];
     let promptToUse = '';
     
     // Construct prompt if we have a command
     if (command && command.trim()) {
-      // If we have a sessionId, include conversation history
       if (sessionId) {
-        const context = sessionManager.buildConversationContext(sessionId);
-        if (context) {
-          // Combine context with current command
-          promptToUse = context + command;
+        const externalSessionId = cliProvider === 'codex' ? sessionManager.getExternalSessionId(sessionId) : null;
+        if (!externalSessionId) {
+          const context = sessionManager.buildConversationContext(sessionId);
+          if (context) {
+            promptToUse = context + command;
+          } else {
+            promptToUse = command;
+          }
         } else {
           promptToUse = command;
         }
@@ -52,14 +58,15 @@ async function spawnGemini(command, options = {}, ws) {
     const workingDir = cleanPath;
     // Debug - workingDir
     
-    // Handle images by saving them to temporary files and passing paths to Gemini
+    // Handle images by saving them to temporary files and passing paths to CLI
     const tempImagePaths = [];
     let tempDir = null;
     if (images && images.length > 0) {
       try {
         // Create temp directory in the project directory so Gemini can access it
         // Use a non-hidden directory to avoid potential issues with CLI file access
-        tempDir = path.join(workingDir, 'gemini_tmp_images', Date.now().toString());
+        const tempDirName = cliProvider === 'codex' ? 'codex_tmp_images' : 'gemini_tmp_images';
+        tempDir = path.join(workingDir, tempDirName, Date.now().toString());
         await fs.mkdir(tempDir, { recursive: true });
         
         // Save each image to a temp file
@@ -81,12 +88,13 @@ async function spawnGemini(command, options = {}, ws) {
           tempImagePaths.push(filepath);
         }
         
-        // Include the full image paths in the prompt for Gemini to reference
-        // Gemini CLI can read images from file paths in the prompt
-        // Use relative paths to ensure compatibility
-        if (tempImagePaths.length > 0 && promptToUse) {
-          const imageNote = `\n\n[画像を添付しました: ${tempImagePaths.length}枚の画像があります。以下のパスに保存されています:]\n${tempImagePaths.map((p, i) => `${i + 1}. ${path.relative(workingDir, p)}`).join('\n')}`;
-          promptToUse += imageNote;
+        if (cliProvider !== 'codex') {
+          // Include the full image paths in the prompt for Gemini to reference
+          // Use relative paths to ensure compatibility
+          if (tempImagePaths.length > 0 && promptToUse) {
+            const imageNote = `\n\n[画像を添付しました: ${tempImagePaths.length}枚の画像があります。以下のパスに保存されています:]\n${tempImagePaths.map((p, i) => `${i + 1}. ${path.relative(workingDir, p)}`).join('\n')}`;
+            promptToUse += imageNote;
+          }
         }
         
         
@@ -98,119 +106,136 @@ async function spawnGemini(command, options = {}, ws) {
     // Gemini doesn't support resume functionality
     // Skip resume handling
     
-    // Add basic flags for Gemini
-    // Only add debug flag if explicitly requested
-    if (options.debug) {
-      args.push('--debug');
-    }
-    
-    // Add MCP config flag only if MCP servers are configured
-    try {
-      // Use already imported modules (fs.promises is imported as fs, path, os)
-      const fsSync = await import('fs'); // Import synchronous fs methods
-      
-      // Check for MCP config in ~/.gemini.json
-      const geminiConfigPath = path.join(os.homedir(), '.gemini.json');
-      
-      
-      let hasMcpServers = false;
-      
-      // Check Gemini config for MCP servers
-      if (fsSync.existsSync(geminiConfigPath)) {
-        try {
-          const geminiConfig = JSON.parse(fsSync.readFileSync(geminiConfigPath, 'utf8'));
-          
-          // Check global MCP servers
-          if (geminiConfig.mcpServers && Object.keys(geminiConfig.mcpServers).length > 0) {
-            hasMcpServers = true;
-          }
-          
-          // Check project-specific MCP servers
-          if (!hasMcpServers && geminiConfig.geminiProjects) {
-            const currentProjectPath = process.cwd();
-            const projectConfig = geminiConfig.geminiProjects[currentProjectPath];
-            if (projectConfig && projectConfig.mcpServers && Object.keys(projectConfig.mcpServers).length > 0) {
-              hasMcpServers = true;
-            }
-          }
-        } catch (e) {
-        }
+    if (cliProvider === 'codex') {
+      args.push('exec', '--json');
+      const modelToUse = options.model || getCliInfo(cliProvider).defaultModel;
+      if (modelToUse) {
+        args.push('--model', modelToUse);
+      }
+      if (settings.skipPermissions) {
+        args.push('--full-auto', '--sandbox', 'danger-full-access');
+      } else {
+        args.push('--sandbox', 'read-only');
+      }
+      if (tempImagePaths.length > 0) {
+        args.push('--image', tempImagePaths.join(','));
+      }
+      const externalSessionId = sessionId ? sessionManager.getExternalSessionId(sessionId) : null;
+      if (externalSessionId) {
+        args.push('resume', externalSessionId);
+      }
+    } else {
+      // Add basic flags for Gemini
+      if (options.debug) {
+        args.push('--debug');
       }
       
-      
-      if (hasMcpServers) {
-        // Use Gemini config file if it has MCP servers
-        let configPath = null;
+      // Add MCP config flag only if MCP servers are configured
+      try {
+        // Use already imported modules (fs.promises is imported as fs, path, os)
+        const fsSync = await import('fs'); // Import synchronous fs methods
         
+        // Check for MCP config in ~/.gemini.json
+        const geminiConfigPath = path.join(os.homedir(), '.gemini.json');
+        
+        
+        let hasMcpServers = false;
+        
+        // Check Gemini config for MCP servers
         if (fsSync.existsSync(geminiConfigPath)) {
           try {
             const geminiConfig = JSON.parse(fsSync.readFileSync(geminiConfigPath, 'utf8'));
             
-            // Check if we have any MCP servers (global or project-specific)
-            const hasGlobalServers = geminiConfig.mcpServers && Object.keys(geminiConfig.mcpServers).length > 0;
-            const currentProjectPath = process.cwd();
-            const projectConfig = geminiConfig.geminiProjects && geminiConfig.geminiProjects[currentProjectPath];
-            const hasProjectServers = projectConfig && projectConfig.mcpServers && Object.keys(projectConfig.mcpServers).length > 0;
+            // Check global MCP servers
+            if (geminiConfig.mcpServers && Object.keys(geminiConfig.mcpServers).length > 0) {
+              hasMcpServers = true;
+            }
             
-            if (hasGlobalServers || hasProjectServers) {
-              configPath = geminiConfigPath;
+            // Check project-specific MCP servers
+            if (!hasMcpServers && geminiConfig.geminiProjects) {
+              const currentProjectPath = process.cwd();
+              const projectConfig = geminiConfig.geminiProjects[currentProjectPath];
+              if (projectConfig && projectConfig.mcpServers && Object.keys(projectConfig.mcpServers).length > 0) {
+                hasMcpServers = true;
+              }
             }
           } catch (e) {
-            // No valid config found
           }
         }
         
-        if (configPath) {
-          args.push('--mcp-config', configPath);
-        } else {
+        
+        if (hasMcpServers) {
+          // Use Gemini config file if it has MCP servers
+          let configPath = null;
+          
+          if (fsSync.existsSync(geminiConfigPath)) {
+            try {
+              const geminiConfig = JSON.parse(fsSync.readFileSync(geminiConfigPath, 'utf8'));
+              
+              // Check if we have any MCP servers (global or project-specific)
+              const hasGlobalServers = geminiConfig.mcpServers && Object.keys(geminiConfig.mcpServers).length > 0;
+              const currentProjectPath = process.cwd();
+              const projectConfig = geminiConfig.geminiProjects && geminiConfig.geminiProjects[currentProjectPath];
+              const hasProjectServers = projectConfig && projectConfig.mcpServers && Object.keys(projectConfig.mcpServers).length > 0;
+              
+              if (hasGlobalServers || hasProjectServers) {
+                configPath = geminiConfigPath;
+              }
+            } catch (e) {
+              // No valid config found
+            }
+          }
+          
+          if (configPath) {
+            args.push('--mcp-config', configPath);
+          } else {
+          }
         }
+      } catch (error) {
+        // If there's any error checking for MCP configs, don't add the flag
+        // MCP config check failed, proceeding without MCP support
       }
-    } catch (error) {
-      // If there's any error checking for MCP configs, don't add the flag
-      // MCP config check failed, proceeding without MCP support
-    }
-    
-    // Add model for all sessions (both new and resumed)
-    // Debug - Model from options and resume session
-    const modelToUse = options.model || 'gemini-2.5-flash';
-    // Debug - Using model
-    args.push('--model', modelToUse);
-    
-    // Add --yolo flag if skipPermissions is enabled
-    if (settings.skipPermissions) {
-      args.push('--yolo');
-    } else {
-      // Pass allowed tools to Gemini CLI
-      // Ensure critical tools are always available by adding them to the allowed list
-      const criticalTools = [
-        'run_shell_command', 
-        'Bash', 
-        'Bash(git log:*)', 
-        'Bash(git diff:*)', 
-        'Bash(git status:*)',
-        'write_file',
-        'read_file',
-        'search_file_content',
-        'save_memory',
-        'replace',
-        'Write',
-        'Read',
-        'Edit',
-        'Glob',
-        'Grep'
-      ];
       
-      let toolsToAllow = [...(settings.allowedTools || [])];
+      // Add model for all sessions (both new and resumed)
+      const modelToUse = options.model || 'gemini-2.5-flash';
+      args.push('--model', modelToUse);
       
-      // Add critical tools if not already present
-      criticalTools.forEach(tool => {
-        if (!toolsToAllow.includes(tool)) {
-          toolsToAllow.push(tool);
+      // Add --yolo flag if skipPermissions is enabled
+      if (settings.skipPermissions) {
+        args.push('--yolo');
+      } else {
+        // Pass allowed tools to Gemini CLI
+        // Ensure critical tools are always available by adding them to the allowed list
+        const criticalTools = [
+          'run_shell_command', 
+          'Bash', 
+          'Bash(git log:*)', 
+          'Bash(git diff:*)', 
+          'Bash(git status:*)',
+          'write_file',
+          'read_file',
+          'search_file_content',
+          'save_memory',
+          'replace',
+          'Write',
+          'Read',
+          'Edit',
+          'Glob',
+          'Grep'
+        ];
+        
+        let toolsToAllow = [...(settings.allowedTools || [])];
+        
+        // Add critical tools if not already present
+        criticalTools.forEach(tool => {
+          if (!toolsToAllow.includes(tool)) {
+            toolsToAllow.push(tool);
+          }
+        });
+        
+        if (toolsToAllow.length > 0) {
+          args.push('--allowed-tools', ...toolsToAllow);
         }
-      });
-      
-      if (toolsToAllow.length > 0) {
-        args.push('--allowed-tools', ...toolsToAllow);
       }
     }
     
@@ -223,7 +248,7 @@ async function spawnGemini(command, options = {}, ws) {
     }
 
     // Try to find gemini in PATH first, then fall back to environment variable
-    const geminiPath = process.env.GEMINI_PATH || 'gemini';
+    const geminiPath = getCliCommand(cliProvider);
     // console.log('Full command:', geminiPath, args.join(' '));
     
     const geminiProcess = spawn(geminiPath, args, {
@@ -249,13 +274,13 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Add timeout handler
     let hasReceivedOutput = false;
-    const timeoutMs = 30000; // 30 seconds
+    const timeoutMs = cliProvider === 'codex' ? 120000 : 30000; // 120s for Codex exec
     const timeout = setTimeout(() => {
       if (!hasReceivedOutput) {
         // console.error('⏰ Gemini CLI timeout - no output received after', timeoutMs, 'ms');
         ws.send(JSON.stringify({
           type: 'gemini-error',
-          error: 'Gemini CLI timeout - no response received'
+          error: `${cliProvider === 'codex' ? 'Codex' : 'Gemini'} CLI timeout - no response received`
         }));
         geminiProcess.kill('SIGTERM');
       }
@@ -278,63 +303,114 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Handle stdout (Gemini outputs plain text)
     let outputBuffer = '';
+    let codexLineBuffer = '';
+    let codexStderrBuffer = '';
     
     geminiProcess.stdout.on('data', (data) => {
       const rawOutput = data.toString();
       outputBuffer += rawOutput;
-      // Debug - Raw Gemini stdout
       hasReceivedOutput = true;
       clearTimeout(timeout);
       
-      // Filter out debug messages and system messages
-      const lines = rawOutput.split('\n');
-      const filteredLines = lines.filter(line => {
-        // Skip debug messages and "Loaded cached credentials"
-        if (line.includes('[DEBUG]') || 
-            line.includes('Flushing log events') || 
-            line.includes('Clearcut response') ||
-            line.includes('[MemoryDiscovery]') ||
-            line.includes('[BfsFileSearch]') ||
-            line.includes('Loaded cached credentials')) {
-          return false;
-        }
-        return true;
-      });
-      
-      const filteredOutput = filteredLines.join('\n').trim();
-      
-      if (filteredOutput) {
-        // Debug - Gemini response
+      if (cliProvider === 'codex') {
+        codexLineBuffer += rawOutput;
+        const lines = codexLineBuffer.split('\n');
+        codexLineBuffer = lines.pop() || '';
         
-        // Accumulate the full response
-        fullResponse += (fullResponse ? '\n' : '') + filteredOutput;
-        
-        // Use response handler for intelligent buffering
-        if (responseHandler) {
-          responseHandler.processData(filteredOutput);
-        } else {
-          // Fallback to direct sending
-          ws.send(JSON.stringify({
-            type: 'gemini-response',
-            data: {
-              type: 'message',
-              content: filteredOutput
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          
+          let event;
+          try {
+            event = JSON.parse(trimmed);
+          } catch (e) {
+            continue;
+          }
+          
+          if (event.type === 'thread.started' && event.thread_id) {
+            pendingExternalSessionId = event.thread_id;
+            if (capturedSessionId) {
+              sessionManager.setExternalSessionId(capturedSessionId, event.thread_id);
             }
-          }));
+          }
+          
+          if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
+            const content = event.item.text || '';
+            if (content) {
+              fullResponse += (fullResponse ? '\n' : '') + content;
+              if (responseHandler) {
+                responseHandler.processData(content);
+              } else {
+                ws.send(JSON.stringify({
+                  type: 'gemini-response',
+                  data: {
+                    type: 'message',
+                    content: content
+                  }
+                }));
+              }
+            }
+          }
+          
+          if (event.type === 'turn.failed' || event.type === 'error') {
+            ws.send(JSON.stringify({
+              type: 'gemini-error',
+              error: event.error?.message || event.message || 'Codex CLI error'
+            }));
+          }
+        }
+      } else {
+        // Filter out debug messages and system messages
+        const lines = rawOutput.split('\n');
+        const filteredLines = lines.filter(line => {
+          // Skip debug messages and "Loaded cached credentials"
+          if (line.includes('[DEBUG]') || 
+              line.includes('Flushing log events') || 
+              line.includes('Clearcut response') ||
+              line.includes('[MemoryDiscovery]') ||
+              line.includes('[BfsFileSearch]') ||
+              line.includes('Loaded cached credentials')) {
+            return false;
+          }
+          return true;
+        });
+        
+        const filteredOutput = filteredLines.join('\n').trim();
+        
+        if (filteredOutput) {
+          fullResponse += (fullResponse ? '\n' : '') + filteredOutput;
+          
+          if (responseHandler) {
+            responseHandler.processData(filteredOutput);
+          } else {
+            ws.send(JSON.stringify({
+              type: 'gemini-response',
+              data: {
+                type: 'message',
+                content: filteredOutput
+              }
+            }));
+          }
         }
       }
       
       // For new sessions, create a session ID
       if (!sessionId && !sessionCreatedSent && !capturedSessionId) {
-        capturedSessionId = `gemini_${Date.now()}`;
+        const sessionPrefix = cliProvider === 'codex' ? 'codex' : 'gemini';
+        capturedSessionId = `${sessionPrefix}_${Date.now()}`;
         sessionCreatedSent = true;
         
         // Create session in session manager
-        sessionManager.createSession(capturedSessionId, cwd || process.cwd());
+        sessionManager.createSession(capturedSessionId, cwd || process.cwd(), cliProvider);
         
         // Save the user message now that we have a session ID
         if (command) {
           sessionManager.addMessage(capturedSessionId, 'user', command);
+        }
+        
+        if (pendingExternalSessionId) {
+          sessionManager.setExternalSessionId(capturedSessionId, pendingExternalSessionId);
         }
         
         // Update process key with captured session ID
@@ -364,8 +440,11 @@ async function spawnGemini(command, options = {}, ws) {
         // Debug - Gemini CLI warning (suppressed)
         return;
       }
+      if (cliProvider === 'codex') {
+        codexStderrBuffer += errorMsg;
+        return;
+      }
       
-      // console.error('Gemini CLI stderr:', errorMsg);
       ws.send(JSON.stringify({
         type: 'gemini-error',
         error: errorMsg
@@ -376,6 +455,16 @@ async function spawnGemini(command, options = {}, ws) {
     geminiProcess.on('close', async (code) => {
       // console.log(`Gemini CLI process exited with code ${code}`);
       clearTimeout(timeout);
+      
+      if (cliProvider === 'codex' && codexLineBuffer.trim()) {
+        try {
+          const event = JSON.parse(codexLineBuffer.trim());
+          if (event.type === 'item.completed' && event.item?.type === 'agent_message' && event.item?.text) {
+            fullResponse += (fullResponse ? '\n' : '') + event.item.text;
+          }
+        } catch (e) {
+        }
+      }
       
       // Flush any remaining buffered content
       if (responseHandler) {
@@ -390,6 +479,13 @@ async function spawnGemini(command, options = {}, ws) {
       // Save assistant response to session if we have one
       if (finalSessionId && fullResponse) {
         sessionManager.addMessage(finalSessionId, 'assistant', fullResponse);
+      }
+      
+      if (cliProvider === 'codex' && code !== 0 && codexStderrBuffer.trim()) {
+        ws.send(JSON.stringify({
+          type: 'gemini-error',
+          error: codexStderrBuffer.trim()
+        }));
       }
       
       ws.send(JSON.stringify({

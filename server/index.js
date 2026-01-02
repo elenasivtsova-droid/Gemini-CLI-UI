@@ -38,6 +38,7 @@ import mime from 'mime-types';
 
 import { getProjects, getSessions, getSessionMessages, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
 import { spawnGemini, abortGeminiSession } from './gemini-cli.js';
+import { getCliCommand, getCliInfo, getCliProvider, getProjectsRoot, normalizeProvider } from './cli-config.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
@@ -52,13 +53,14 @@ const connectedClients = new Set();
 // Setup file system watcher for Gemini projects folder using chokidar
 async function setupProjectsWatcher() {
   const chokidar = (await import('chokidar')).default;
-  const geminiProjectsPath = path.join(process.env.HOME, '.gemini', 'projects');
+  const geminiProjectsPath = getProjectsRoot();
   
   if (projectsWatcher) {
     projectsWatcher.close();
   }
   
   try {
+    await fsPromises.mkdir(geminiProjectsPath, { recursive: true });
     // Initialize chokidar watcher with optimized settings
     projectsWatcher = chokidar.watch(geminiProjectsPath, {
       ignored: [
@@ -190,6 +192,11 @@ app.get('/api/config', authenticateToken, (req, res) => {
     serverPort: PORT,
     wsUrl: `${protocol}://${host}`
   });
+});
+
+app.get('/api/cli-info', authenticateToken, (req, res) => {
+  const provider = req.query.provider || null;
+  res.json(getCliInfo(provider));
 });
 
 app.get('/api/projects', authenticateToken, async (req, res) => {
@@ -515,9 +522,11 @@ function handleShellConnection(ws) {
         const toolsSettings = data.toolsSettings;
         
         // First send a welcome message
+        const cliProvider = normalizeProvider(toolsSettings?.provider || null);
+        const cliLabel = cliProvider === 'codex' ? 'Codex' : 'Gemini';
         const welcomeMsg = hasSession ? 
-          `\x1b[36mResuming Gemini session ${sessionId} in: ${projectPath}\x1b[0m\r\n` :
-          `\x1b[36mStarting new Gemini session in: ${projectPath}\x1b[0m\r\n`;
+          `\x1b[36mResuming ${cliLabel} session ${sessionId} in: ${projectPath}\x1b[0m\r\n` :
+          `\x1b[36mStarting new ${cliLabel} session in: ${projectPath}\x1b[0m\r\n`;
         
         ws.send(JSON.stringify({
           type: 'output',
@@ -525,36 +534,37 @@ function handleShellConnection(ws) {
         }));
         
         try {
-          // Get gemini command from environment or use default
-          const geminiPath = process.env.GEMINI_PATH || 'gemini';
+          const cliPath = getCliCommand(cliProvider);
           
           // First check if gemini CLI is available
           try {
-            execSync(`which ${geminiPath}`, { stdio: 'ignore' });
+            execSync(`which ${cliPath}`, { stdio: 'ignore' });
           } catch (error) {
-            // console.error('❌ Gemini CLI not found in PATH or GEMINI_PATH');
+            // console.error('❌ CLI not found in PATH');
             ws.send(JSON.stringify({
               type: 'output',
-              data: `\r\n\x1b[31mError: Gemini CLI not found. Please check:\x1b[0m\r\n\x1b[33m1. Install gemini globally: npm install -g @google/generative-ai-cli\x1b[0m\r\n\x1b[33m2. Or set GEMINI_PATH in .env file\x1b[0m\r\n`
+              data: `\r\n\x1b[31mError: ${cliPath} not found. Please check:\x1b[0m\r\n\x1b[33m1. Install the CLI globally (gemini or codex)\x1b[0m\r\n\x1b[33m2. Or set GEMINI_PATH/CODEX_PATH in .env file\x1b[0m\r\n`
             }));
             return;
           }
           
           // Build shell command that changes to project directory first, then runs gemini
-          let geminiCommand = geminiPath;
+          let geminiCommand = cliPath;
           
           // Add YOLO flag if enabled
-          if (toolsSettings?.skipPermissions) {
+          if (toolsSettings?.skipPermissions && cliProvider !== 'codex') {
             geminiCommand += ' --yolo';
           }
           
-          if (hasSession && sessionId) {
+          if (hasSession && sessionId && cliProvider !== 'codex') {
             // Try to resume session, but with fallback to new session if it fails
-            geminiCommand += ` --resume ${sessionId} || ${geminiPath}${toolsSettings?.skipPermissions ? ' --yolo' : ''}`;
+            geminiCommand += ` --resume ${sessionId} || ${cliPath}${toolsSettings?.skipPermissions ? ' --yolo' : ''}`;
+          } else if (cliProvider === 'codex') {
+            geminiCommand += ` --cd "${projectPath}"`;
           }
           
           // Create shell command that cds to the project directory first
-          const shellCommand = `cd "${projectPath}" && ${geminiCommand}`;
+          const shellCommand = cliProvider === 'codex' ? geminiCommand : `cd "${projectPath}" && ${geminiCommand}`;
           
           
           // Start shell using PTY for proper terminal emulation
