@@ -25,23 +25,23 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Use tools settings
     
-    // Build Gemini CLI command - start with print/resume flags first
+    // Build Gemini CLI command
     const args = [];
+    let promptToUse = '';
     
-    // Add prompt flag with command if we have a command
+    // Construct prompt if we have a command
     if (command && command.trim()) {
       // If we have a sessionId, include conversation history
       if (sessionId) {
         const context = sessionManager.buildConversationContext(sessionId);
         if (context) {
           // Combine context with current command
-          const fullPrompt = context + command;
-          args.push('--prompt', fullPrompt);
+          promptToUse = context + command;
         } else {
-          args.push('--prompt', command);
+          promptToUse = command;
         }
       } else {
-        args.push('--prompt', command);
+        promptToUse = command;
       }
     }
     
@@ -82,18 +82,9 @@ async function spawnGemini(command, options = {}, ws) {
         
         // Include the full image paths in the prompt for Gemini to reference
         // Gemini CLI can read images from file paths in the prompt
-        if (tempImagePaths.length > 0 && command && command.trim()) {
+        if (tempImagePaths.length > 0 && promptToUse) {
           const imageNote = `\n\n[画像を添付しました: ${tempImagePaths.length}枚の画像があります。以下のパスに保存されています:]\n${tempImagePaths.map((p, i) => `${i + 1}. ${p}`).join('\n')}`;
-          const modifiedCommand = command + imageNote;
-          
-          // Update the command in args
-          const promptIndex = args.indexOf('--prompt');
-          if (promptIndex !== -1 && args[promptIndex + 1] === command) {
-            args[promptIndex + 1] = modifiedCommand;
-          } else if (promptIndex !== -1) {
-            // If we're using context, update the full prompt
-            args[promptIndex + 1] = args[promptIndex + 1] + imageNote;
-          }
+          promptToUse += imageNote;
         }
         
         
@@ -195,6 +186,11 @@ async function spawnGemini(command, options = {}, ws) {
     // console.log('Spawning Gemini CLI with args:', args);
     // console.log('Working directory:', workingDir);
     
+    // Add prompt as a positional argument at the end
+    if (promptToUse) {
+      args.push(promptToUse);
+    }
+
     // Try to find gemini in PATH first, then fall back to environment variable
     const geminiPath = process.env.GEMINI_PATH || 'gemini';
     // console.log('Full command:', geminiPath, args.join(' '));
@@ -409,9 +405,9 @@ async function spawnGemini(command, options = {}, ws) {
     });
     
     // Handle stdin for interactive mode
-    // Gemini with --prompt flag doesn't need stdin
+    // Gemini with positional prompt doesn't need stdin
     if (command && command.trim()) {
-      // We're using --prompt flag, so just close stdin
+      // We're using a positional prompt, so just close stdin
       geminiProcess.stdin.end();
     } else {
       // Interactive mode without initial prompt
