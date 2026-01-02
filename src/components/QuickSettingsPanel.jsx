@@ -65,7 +65,7 @@ const QuickSettingsPanel = ({
       </div>
 
       {/* Panel */}
-      <div
+      <aside
         className={`fixed top-0 right-0 h-full w-64 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-xl transform transition-transform duration-150 ease-out z-40 ${
           localIsOpen ? 'translate-x-0' : 'translate-x-full'
         } ${isMobile ? 'h-screen' : ''}`}
@@ -222,7 +222,7 @@ const QuickSettingsPanel = ({
             </div>
           </div>
         </div>
-      </div>
+      </aside>
 
       {/* Backdrop */}
       {localIsOpen && (

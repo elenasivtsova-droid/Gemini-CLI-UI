@@ -39,7 +39,7 @@ function MobileNav({ activeTab, setActiveTab, isInputFocused }) {
           }
         `}
       </style>
-      <div 
+      <nav
         className={`mobile-nav-container fixed bottom-0 left-0 right-0 border-t border-gray-200 dark:border-gray-700 z-50 ios-bottom-safe transform transition-transform duration-300 ease-in-out shadow-lg ${
           isInputFocused ? 'translate-y-full' : 'translate-y-0'
         }`}
@@ -72,9 +72,8 @@ function MobileNav({ activeTab, setActiveTab, isInputFocused }) {
           );
         })}
       </div>
-    </div>
-    </>
-  );
+          </nav>
+        </>  );
 }
 
 export default MobileNav;

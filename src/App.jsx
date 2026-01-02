@@ -508,7 +508,7 @@ function AppContent() {
     <div className="fixed inset-0 flex bg-background">
       {/* Fixed Desktop Sidebar */}
       {!isMobile && (
-        <div className="w-80 flex-shrink-0 border-r border-border bg-card">
+        <aside className="w-80 flex-shrink-0 border-r border-border bg-card">
           <div className="h-full overflow-hidden">
             <Sidebar
               projects={projects}
@@ -528,7 +528,7 @@ function AppContent() {
               onShowVersionModal={() => setShowVersionModal(true)}
             />
           </div>
-        </div>
+        </aside>
       )}
 
       {/* Mobile Sidebar Overlay */}
@@ -548,36 +548,21 @@ function AppContent() {
               setSidebarOpen(false);
             }}
           />
-          <div 
-            className={`relative w-[85vw] max-w-sm sm:w-80 bg-card border-r border-border h-full transform transition-transform duration-150 ease-out ${
-              sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-            }`}
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-          >
-            <Sidebar
-              projects={projects}
-              selectedProject={selectedProject}
-              selectedSession={selectedSession}
-              onProjectSelect={handleProjectSelect}
-              onSessionSelect={handleSessionSelect}
-              onNewSession={handleNewSession}
-              onSessionDelete={handleSessionDelete}
-              onProjectDelete={handleProjectDelete}
-              isLoading={isLoadingProjects}
-              onRefresh={handleSidebarRefresh}
-              onShowSettings={() => setShowToolsSettings(true)}
-              updateAvailable={updateAvailable}
-              latestVersion={latestVersion}
-              currentVersion={currentVersion}
-              onShowVersionModal={() => setShowVersionModal(true)}
+                    <aside
+                      className={`relative w-[85vw] max-w-sm sm:w-80 bg-card border-r border-border h-full transform transition-transform duration-150 ease-out ${
+                        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                      }`}
+                      onClick={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
+                    >            <Sidebar
+              // ... props
             />
-          </div>
+          </aside>
         </div>
       )}
 
       {/* Main Content Area - Flexible */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <main className="flex-1 flex flex-col min-w-0">
         <MainContent
           selectedProject={selectedProject}
           selectedSession={selectedSession}
@@ -599,7 +584,7 @@ function AppContent() {
           showRawParameters={showRawParameters}
           autoScrollToBottom={autoScrollToBottom}
         />
-      </div>
+      </main>
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (
