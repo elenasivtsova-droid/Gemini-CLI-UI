@@ -112,7 +112,7 @@ const CodeBlock = ({ language, value, isDarkMode }) => {
   );
 };
 
-export const EnhancedMessageRenderer = ({ content, isDarkMode = true }) => {
+export const EnhancedMessageRenderer = ({ content, isDarkMode = true, onInlineCodeClick }) => {
   // Filter out error messages
   let processedContent = content?.replace(/^Error:\s*Loaded cached credentials\.?\s*\n?/gim, '');
   
@@ -160,8 +160,20 @@ export const EnhancedMessageRenderer = ({ content, isDarkMode = true }) => {
             const isInline = !match && !childrenContent.includes('\n');
             
             if (isInline) {
+              const inlineText = childrenContent;
+              const handleClick = () => {
+                if (onInlineCodeClick) {
+                  onInlineCodeClick(inlineText);
+                } else {
+                  copyToClipboard(inlineText);
+                }
+              };
               return (
-                <code className="px-1.5 py-0.5 mx-0.5 bg-blue-50 dark:bg-gray-800 text-blue-600 dark:text-blue-400 rounded text-xs font-mono">
+                <code
+                  className="px-1.5 py-0.5 mx-0.5 bg-blue-50 dark:bg-gray-800 text-blue-600 dark:text-blue-400 rounded text-xs font-mono cursor-pointer"
+                  onClick={handleClick}
+                  title="Click to copy"
+                >
                   {children}
                 </code>
               );

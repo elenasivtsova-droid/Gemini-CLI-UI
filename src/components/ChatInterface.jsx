@@ -29,7 +29,7 @@ import { playNotificationSound } from '../utils/notificationSound';
 import * as webllmEngine from '../utils/webllmEngine';
 
 // Memoized message component to prevent unnecessary re-renders
-const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFileOpen, onShowSettings, autoExpandTools, showRawParameters, providerLabel }) => {
+const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFileOpen, onShowSettings, autoExpandTools, showRawParameters, providerLabel, markdownComponents, onInlineCodeClick }) => {
   const isGrouped = prevMessage && prevMessage.type === message.type && 
                    prevMessage.type === 'assistant' && 
                    !prevMessage.isToolUse && !message.isToolUse;
@@ -468,7 +468,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                               📋 View implementation plan
                             </summary>
                             <div className="mt-3 prose prose-sm max-w-none dark:prose-invert">
-                              <ReactMarkdown>{planContent}</ReactMarkdown>
+                              <ReactMarkdown components={markdownComponents}>{planContent}</ReactMarkdown>
                             </div>
                           </details>
                         );
@@ -578,7 +578,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                                     <span className="font-medium">Implementation Plan</span>
                                   </div>
                                   <div className="prose prose-sm max-w-none dark:prose-invert">
-                                    <ReactMarkdown>{planContent}</ReactMarkdown>
+                                    <ReactMarkdown components={markdownComponents}>{planContent}</ReactMarkdown>
                                   </div>
                                 </div>
                               );
@@ -770,7 +770,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                                 View full output ({content.length} chars)
                               </summary>
                               <div className="mt-2 prose prose-sm max-w-none prose-green dark:prose-invert">
-                                <ReactMarkdown>{content}</ReactMarkdown>
+                                <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
                               </div>
                             </details>
                           );
@@ -778,7 +778,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                         
                         return (
                           <div className="prose prose-sm max-w-none prose-green dark:prose-invert">
-                            <ReactMarkdown>{content}</ReactMarkdown>
+                            <ReactMarkdown components={markdownComponents}>{content}</ReactMarkdown>
                           </div>
                         );
                       })()}
@@ -943,6 +943,7 @@ const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFile
                   <EnhancedMessageRenderer 
                     content={message.content} 
                     isDarkMode={document.documentElement.classList.contains('dark')}
+                    onInlineCodeClick={onInlineCodeClick}
                   />
                 ) : (
                   <div className={`whitespace-pre-wrap ${message.type === 'error' ? 'select-all cursor-text pr-16' : ''}`}>
@@ -1101,6 +1102,60 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const providerLabel = providerLabels[selectedProvider] || 'Gemini';
   const isAutoMode = isYoloMode && selectedProvider !== 'claude' && selectedProvider !== 'bmad';
   const providerInitial = providerLabel.charAt(0);
+
+  const insertTextAtCursor = useCallback((text) => {
+    const target = textareaRef.current;
+    const selectionStart = target ? target.selectionStart : cursorPosition;
+    const selectionEnd = target ? target.selectionEnd : cursorPosition;
+    const newValue = input.slice(0, selectionStart) + text + input.slice(selectionEnd);
+    const newCursorPosition = selectionStart + text.length;
+
+    setInput(newValue);
+    setCursorPosition(newCursorPosition);
+
+    if (target) {
+      requestAnimationFrame(() => {
+        target.focus();
+        target.setSelectionRange(newCursorPosition, newCursorPosition);
+      });
+    }
+  }, [cursorPosition, input]);
+
+  const handleInlineCodeClick = useCallback(async (codeText) => {
+    const text = String(codeText || '');
+    if (!text.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      // Clipboard permissions can fail; still insert into input.
+    }
+
+    insertTextAtCursor(text);
+  }, [insertTextAtCursor]);
+
+  const markdownComponents = useMemo(() => ({
+    code({ inline, className, children, ...props }) {
+      if (inline) {
+        const codeText = String(children || '').replace(/\n$/, '');
+        return (
+          <code
+            className={`${className || ''} cursor-pointer`}
+            onClick={() => handleInlineCodeClick(codeText)}
+            title="Click to copy"
+            {...props}
+          >
+            {children}
+          </code>
+        );
+      }
+      return (
+        <code className={className} {...props}>
+          {children}
+        </code>
+      );
+    }
+  }), [handleInlineCodeClick]);
 
   useEffect(() => {
     let isActive = true;
@@ -2604,6 +2659,8 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                   autoExpandTools={autoExpandTools}
                   showRawParameters={showRawParameters}
                   providerLabel={providerLabel}
+                  markdownComponents={markdownComponents}
+                  onInlineCodeClick={handleInlineCodeClick}
                 />
               );
             })}
