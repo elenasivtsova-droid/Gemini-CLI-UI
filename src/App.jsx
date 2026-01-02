@@ -33,6 +33,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import { api } from './utils/api';
+import { copyToClipboard } from './lib/utils';
 
 
 // Main App component with routing
@@ -490,10 +491,7 @@ function AppContent() {
             <button
               onClick={() => {
                 // Copy command to clipboard
-                navigator.clipboard.writeText('git checkout main && git pull && npm install')
-                  .catch(() => {
-                    // Silently fail if clipboard access is denied
-                  });
+                copyToClipboard('git checkout main && git pull && npm install');
                 setShowVersionModal(false);
               }}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"

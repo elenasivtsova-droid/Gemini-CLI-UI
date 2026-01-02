@@ -58,7 +58,8 @@ async function spawnGemini(command, options = {}, ws) {
     if (images && images.length > 0) {
       try {
         // Create temp directory in the project directory so Gemini can access it
-        tempDir = path.join(workingDir, '.tmp', 'images', Date.now().toString());
+        // Use a non-hidden directory to avoid potential issues with CLI file access
+        tempDir = path.join(workingDir, 'gemini_tmp_images', Date.now().toString());
         await fs.mkdir(tempDir, { recursive: true });
         
         // Save each image to a temp file
@@ -82,8 +83,9 @@ async function spawnGemini(command, options = {}, ws) {
         
         // Include the full image paths in the prompt for Gemini to reference
         // Gemini CLI can read images from file paths in the prompt
+        // Use relative paths to ensure compatibility
         if (tempImagePaths.length > 0 && promptToUse) {
-          const imageNote = `\n\n[画像を添付しました: ${tempImagePaths.length}枚の画像があります。以下のパスに保存されています:]\n${tempImagePaths.map((p, i) => `${i + 1}. ${p}`).join('\n')}`;
+          const imageNote = `\n\n[画像を添付しました: ${tempImagePaths.length}枚の画像があります。以下のパスに保存されています:]\n${tempImagePaths.map((p, i) => `${i + 1}. ${path.relative(workingDir, p)}`).join('\n')}`;
           promptToUse += imageNote;
         }
         
@@ -178,10 +180,11 @@ async function spawnGemini(command, options = {}, ws) {
     if (settings.skipPermissions) {
       args.push('--yolo');
     } else {
+      // Pass allowed tools to Gemini CLI
+      if (settings.allowedTools && settings.allowedTools.length > 0) {
+        args.push('--allowed-tools', ...settings.allowedTools);
+      }
     }
-    
-    // Gemini doesn't support these tool permission flags
-    // Skip all tool settings
     
     // console.log('Spawning Gemini CLI with args:', args);
     // console.log('Working directory:', workingDir);

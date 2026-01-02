@@ -4,17 +4,17 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { copyToClipboard } from '../lib/utils';
 
 const CodeBlock = ({ language, value, isDarkMode }) => {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(value).then(() => {
+  const handleCopy = async () => {
+    const success = await copyToClipboard(value);
+    if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {
-      console.error('Failed to copy code');
-    });
+    }
   };
 
   // Detect language from content if not specified

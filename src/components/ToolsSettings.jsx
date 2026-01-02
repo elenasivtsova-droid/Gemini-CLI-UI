@@ -66,8 +66,14 @@ function ToolsSettings({ isOpen, onClose }) {
   
   // Available Gemini models (tested and verified)
   const availableModels = [
+    { value: 'gemini-3-pro-preview', label: 'Gemini 3.0 Pro', description: 'Next generation reasoning and capabilities' },
+    { value: 'gemini-3.0-flash', label: 'Gemini 3.0 Flash', description: 'Ultra-fast next gen model' },
     { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', description: 'Fast and efficient latest model (Recommended)' },
-    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Most advanced model (Note: May have quota limits)' }
+    { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', description: 'Most advanced model (Note: May have quota limits)' },
+    { value: 'gemini-2.0-flash-thinking-exp-01-21', label: 'Gemini 2.0 Flash Thinking', description: 'Thinking model with extended reasoning capabilities' },
+    { value: 'gemini-2.0-pro-exp-02-05', label: 'Gemini 2.0 Pro', description: 'Advanced experimental model' },
+    { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', description: 'Balanced performance and capabilities' },
+    { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', description: 'Fast and cost-effective' }
   ];
 
   // MCP API functions
