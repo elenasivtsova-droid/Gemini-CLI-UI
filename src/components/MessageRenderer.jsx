@@ -125,9 +125,13 @@ export const MessageRenderer = ({ content, isDarkMode = true }) => {
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
-          code: ({ node, inline, className, children, ...props }) => {
+          code: ({ node, className, children, ...props }) => {
+            const match = /language-(\w+)/.exec(className || '');
+            const childrenContent = Array.isArray(children) ? children.join('') : String(children);
+            const isInline = !match && !childrenContent.includes('\n');
+            
             // For inline code, just render simple styled code
-            if (inline) {
+            if (isInline) {
               return (
                 <code className="px-1.5 py-0.5 mx-0.5 bg-gray-100 dark:bg-gray-800 text-blue-600 dark:text-blue-400 rounded text-sm font-mono">
                   {children}
@@ -172,14 +176,11 @@ export const MessageRenderer = ({ content, isDarkMode = true }) => {
             </h3>
           ),
           p: ({ children }) => {
-            // Check if paragraph only contains whitespace or is empty
-            const text = children?.toString().trim();
-            if (!text || text === '') return null;
-            
+            if (!children) return null;
             return (
-              <p className="mb-2 leading-relaxed text-sm text-gray-700 dark:text-gray-300">
+              <div className="mb-2 last:mb-0">
                 {children}
-              </p>
+              </div>
             );
           },
           ul: ({ children }) => (

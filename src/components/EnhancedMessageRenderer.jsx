@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -151,10 +152,14 @@ export const EnhancedMessageRenderer = ({ content, isDarkMode = true }) => {
   return (
     <div className="prose prose-sm max-w-none dark:prose-invert leading-relaxed">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkBreaks]}
         components={{
-          code: ({ node, inline, className, children, ...props }) => {
-            if (inline) {
+          code: ({ node, className, children, ...props }) => {
+            const match = /language-(\w+)/.exec(className || '');
+            const childrenContent = Array.isArray(children) ? children.join('') : String(children);
+            const isInline = !match && !childrenContent.includes('\n');
+            
+            if (isInline) {
               return (
                 <code className="px-1.5 py-0.5 mx-0.5 bg-blue-50 dark:bg-gray-800 text-blue-600 dark:text-blue-400 rounded text-xs font-mono">
                   {children}
@@ -162,9 +167,8 @@ export const EnhancedMessageRenderer = ({ content, isDarkMode = true }) => {
               );
             }
             
-            const match = /language-(\w+)/.exec(className || '');
             const language = match ? match[1] : '';
-            const value = String(children).replace(/\n$/, '');
+            const value = childrenContent.replace(/\n$/, '');
             
             return (
               <CodeBlock
@@ -194,13 +198,11 @@ export const EnhancedMessageRenderer = ({ content, isDarkMode = true }) => {
             </h3>
           ),
           p: ({ children }) => {
-            const text = children?.toString().trim();
-            if (!text || text === '') return null;
-            
+            if (!children) return null;
             return (
-              <p className="mb-2 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+              <div className="mb-2 last:mb-0">
                 {children}
-              </p>
+              </div>
             );
           },
           ul: ({ children }) => (
