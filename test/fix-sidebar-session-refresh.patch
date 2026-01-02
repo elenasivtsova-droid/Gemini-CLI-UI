@@ -1,0 +1,19 @@
+diff --git a/src/components/ChatInterface.jsx b/src/components/ChatInterface.jsx
+--- a/src/components/ChatInterface.jsx
++++ b/src/components/ChatInterface.jsx
+@@
+             // Session Protection: Replace temporary "new-session-*" identifier with real session ID
+             // This maintains protection continuity - no gap between temp ID and real ID
+             // The temporary session is removed and real session is marked as active
+             if (onReplaceTemporarySession) {
+               onReplaceTemporarySession(latestMessage.sessionId);
+             }
++
++            // Ensure the sidebar sessions list updates immediately for new sessions.
++            // New sessions are created in the server session manager (not via the projects watcher),
++            // so we need an explicit refresh to show the session without a full page reload.
++            if (typeof window !== 'undefined' && typeof window.refreshProjects === 'function') {
++              window.refreshProjects();
++            }
+           }
+           break;

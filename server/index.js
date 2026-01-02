@@ -53,7 +53,7 @@ const connectedClients = new Set();
 // Setup file system watchers for provider projects folders using chokidar
 async function setupProjectsWatcher() {
   const chokidar = (await import('chokidar')).default;
-  const providersToWatch = ['gemini', 'codex', 'claude'];
+  const providersToWatch = ['gemini', 'codex', 'claude', 'ollama'];
   projectWatchers.forEach(watcher => watcher.close());
   projectWatchers.clear();
   
@@ -529,7 +529,7 @@ function handleShellConnection(ws) {
         
         // First send a welcome message
         const cliProvider = normalizeProvider(toolsSettings?.provider || null);
-        const cliLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : 'Gemini';
+        const cliLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : cliProvider === 'ollama' ? 'Ollama' : 'Gemini';
         const welcomeMsg = hasSession ? 
           `\x1b[36mResuming ${cliLabel} session ${sessionId} in: ${projectPath}\x1b[0m\r\n` :
           `\x1b[36mStarting new ${cliLabel} session in: ${projectPath}\x1b[0m\r\n`;
@@ -549,7 +549,7 @@ function handleShellConnection(ws) {
             // console.error('❌ CLI not found in PATH');
             ws.send(JSON.stringify({
               type: 'output',
-              data: `\r\n\x1b[31mError: ${cliPath} not found. Please check:\x1b[0m\r\n\x1b[33m1. Install the CLI globally (gemini, codex, or claude)\x1b[0m\r\n\x1b[33m2. Or set GEMINI_PATH/CODEX_PATH/CLAUDE_PATH in .env file\x1b[0m\r\n`
+              data: `\r\n\x1b[31mError: ${cliPath} not found. Please check:\x1b[0m\r\n\x1b[33m1. Install the CLI globally (gemini, codex, claude, or ollama)\x1b[0m\r\n\x1b[33m2. Or set GEMINI_PATH/CODEX_PATH/CLAUDE_PATH/OLLAMA_PATH in .env file\x1b[0m\r\n`
             }));
             return;
           }
@@ -567,6 +567,9 @@ function handleShellConnection(ws) {
             geminiCommand += ` --resume ${sessionId} || ${cliPath}${toolsSettings?.skipPermissions ? ' --yolo' : ''}`;
           } else if (cliProvider === 'codex') {
             geminiCommand += ` --cd "${projectPath}"`;
+          } else if (cliProvider === 'ollama') {
+            const model = toolsSettings?.selectedModel || 'llama2:latest';
+            geminiCommand += ` run ${model}`;
           }
           
           // Create shell command that cds to the project directory first

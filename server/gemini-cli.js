@@ -8,6 +8,22 @@ import { buildSpawnEnv, getCliCommand, getCliInfo, normalizeProvider } from './c
 
 let activeGeminiProcesses = new Map(); // Track active processes by session ID
 
+function sanitizeCliOutput(output) {
+  if (!output) return '';
+  // Strip ANSI escape sequences and control chars while preserving newlines.
+  const withoutAnsi = output
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b[()][A-Za-z0-9]/g, '');
+  return withoutAnsi.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+}
+
+function stripOllamaSpinner(output) {
+  if (!output) return '';
+  // Ollama uses braille spinner glyphs; strip them to avoid noise messages.
+  return output.replace(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/g, '');
+}
+
 async function spawnGemini(command, options = {}, ws) {
   return new Promise(async (resolve, reject) => {
     const { sessionId, projectPath, cwd, resume, toolsSettings, permissionMode, images } = options;
@@ -15,7 +31,7 @@ async function spawnGemini(command, options = {}, ws) {
     let sessionCreatedSent = false; // Track if we've already sent session-created event
     let fullResponse = ''; // Accumulate the full response
     const cliProvider = normalizeProvider(options.provider);
-    const providerLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : 'Gemini';
+    const providerLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : cliProvider === 'ollama' ? 'Ollama' : 'Gemini';
     let pendingExternalSessionId = null;
     
     // Process images if provided
@@ -75,6 +91,8 @@ async function spawnGemini(command, options = {}, ws) {
           ? 'codex_tmp_images'
           : cliProvider === 'claude'
           ? 'claude_tmp_images'
+          : cliProvider === 'ollama'
+          ? 'ollama_tmp_images'
           : 'gemini_tmp_images';
         tempDir = path.join(workingDir, tempDirName, Date.now().toString());
         await fs.mkdir(tempDir, { recursive: true });
@@ -139,6 +157,9 @@ async function spawnGemini(command, options = {}, ws) {
       if (modelToUse) {
         args.push('--model', modelToUse);
       }
+    } else if (cliProvider === 'ollama') {
+      const modelToUse = options.model || getCliInfo(cliProvider).defaultModel;
+      args.push('run', modelToUse);
     } else {
       // Add basic flags for Gemini
       if (options.debug) {
@@ -295,7 +316,7 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Add timeout handler
     let hasReceivedOutput = false;
-    const timeoutMs = cliProvider === 'codex' ? 120000 : 30000; // 120s for Codex exec
+    const timeoutMs = cliProvider === 'codex' ? 120000 : cliProvider === 'ollama' ? 120000 : 30000; // 120s for Codex/Ollama
     const timeout = setTimeout(() => {
       if (!hasReceivedOutput) {
         // console.error('⏰ Gemini CLI timeout - no output received after', timeoutMs, 'ms');
@@ -314,7 +335,7 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Create response handler for intelligent buffering
     let responseHandler;
-    if (ws) {
+    if (ws && cliProvider !== 'ollama') {
       responseHandler = new GeminiResponseHandler(ws, {
         partialDelay: 300,
         maxWaitTime: 1500,
@@ -414,6 +435,11 @@ async function spawnGemini(command, options = {}, ws) {
             }));
           }
         }
+      } else if (cliProvider === 'ollama') {
+        const sanitizedOutput = stripOllamaSpinner(sanitizeCliOutput(rawOutput));
+        if (sanitizedOutput.trim()) {
+          fullResponse += sanitizedOutput;
+        }
       } else {
         const trimmedOutput = rawOutput.trim();
         if (trimmedOutput) {
@@ -435,7 +461,7 @@ async function spawnGemini(command, options = {}, ws) {
       
       // For new sessions, create a session ID
       if (!sessionId && !sessionCreatedSent && !capturedSessionId) {
-        const sessionPrefix = cliProvider === 'codex' ? 'codex' : cliProvider === 'claude' ? 'claude' : 'gemini';
+        const sessionPrefix = cliProvider === 'codex' ? 'codex' : cliProvider === 'claude' ? 'claude' : cliProvider === 'ollama' ? 'ollama' : 'gemini';
         capturedSessionId = `${sessionPrefix}_${Date.now()}`;
         sessionCreatedSent = true;
         
@@ -483,6 +509,18 @@ async function spawnGemini(command, options = {}, ws) {
         return;
       }
       
+      if (cliProvider === 'ollama') {
+        const sanitizedError = stripOllamaSpinner(sanitizeCliOutput(errorMsg)).trim();
+        if (!sanitizedError) {
+          return;
+        }
+        ws.send(JSON.stringify({
+          type: 'gemini-error',
+          error: sanitizedError
+        }));
+        return;
+      }
+      
       ws.send(JSON.stringify({
         type: 'gemini-error',
         error: errorMsg
@@ -523,6 +561,16 @@ async function spawnGemini(command, options = {}, ws) {
         ws.send(JSON.stringify({
           type: 'gemini-error',
           error: codexStderrBuffer.trim()
+        }));
+      }
+
+      if (cliProvider === 'ollama' && fullResponse.trim()) {
+        ws.send(JSON.stringify({
+          type: 'gemini-response',
+          data: {
+            type: 'message',
+            content: fullResponse.trim()
+          }
         }));
       }
       

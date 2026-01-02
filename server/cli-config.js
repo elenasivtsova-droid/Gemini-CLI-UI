@@ -5,15 +5,19 @@ const rawProvider = (process.env.CLI_PROVIDER || 'gemini').toLowerCase();
 const provider = rawProvider === 'codex' ? 'codex'
   : rawProvider === 'webllm' ? 'webllm'
   : rawProvider === 'claude' ? 'claude'
+  : rawProvider === 'ollama' ? 'ollama'
   : 'gemini';
 
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const claudeHome = process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude');
 const geminiHome = path.join(os.homedir(), '.gemini');
+const ollamaHome = process.env.OLLAMA_HOME || path.join(os.homedir(), '.ollama');
 const uiHome = process.env.CLI_UI_HOME || (provider === 'codex'
   ? path.join(codexHome, 'cli-ui')
   : provider === 'claude'
   ? path.join(claudeHome, 'cli-ui')
+  : provider === 'ollama'
+  ? path.join(ollamaHome, 'cli-ui')
   : geminiHome);
 
 const cliModelCatalog = {
@@ -47,6 +51,11 @@ const cliModelCatalog = {
     { value: 'Phi-3.5-mini-instruct-q4f32_1-MLC', label: 'Phi 3.5 Mini', description: 'Microsoft Phi model, efficient' },
     { value: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B', description: 'Google Gemma, small and fast' },
     { value: 'Qwen3-0.6B-q4f16_1-MLC', label: 'Qwen 3 0.6B', description: 'Tiny model for quick testing' }
+  ],
+  ollama: [
+    { value: 'llama2:latest', label: 'Llama 2', description: 'Stable default model from Ollama registry' },
+    { value: 'llama3.2:1b', label: 'Llama 3.2 1B', description: 'Small model (requires compatible Ollama version)' },
+    { value: 'deepseek-r1:1.5b', label: 'DeepSeek R1 1.5B', description: 'Compact reasoning model' }
   ]
 };
 
@@ -54,7 +63,8 @@ const defaultModelByProvider = {
   gemini: 'gemini-2.5-flash',
   codex: 'gpt-5.1-codex-max',
   claude: 'claude-3-5-sonnet-latest',
-  webllm: 'Llama-3.2-1B-Instruct-q4f32_1-MLC'
+  webllm: 'Llama-3.2-1B-Instruct-q4f32_1-MLC',
+  ollama: 'llama2:latest'
 };
 
 function getCliProvider() {
@@ -67,6 +77,7 @@ function normalizeProvider(providerOverride) {
   if (p === 'codex') return 'codex';
   if (p === 'claude') return 'claude';
   if (p === 'webllm') return 'webllm';
+  if (p === 'ollama') return 'ollama';
   return 'gemini';
 }
 
@@ -77,6 +88,9 @@ function getCliCommand(providerOverride) {
   }
   if (resolvedProvider === 'claude') {
     return process.env.CLAUDE_PATH || 'claude';
+  }
+  if (resolvedProvider === 'ollama') {
+    return process.env.OLLAMA_PATH || 'ollama';
   }
   return process.env.GEMINI_PATH || 'gemini';
 }
@@ -91,6 +105,9 @@ function getUiHome(providerOverride) {
   }
   if (resolvedProvider === 'claude') {
     return path.join(claudeHome, 'cli-ui');
+  }
+  if (resolvedProvider === 'ollama') {
+    return path.join(ollamaHome, 'cli-ui');
   }
   return geminiHome;
 }
@@ -114,7 +131,8 @@ function getCliInfo(providerOverride) {
     gemini: 'Gemini CLI',
     codex: 'Codex CLI',
     claude: 'Claude CLI',
-    webllm: 'WebLLM (Local)'
+    webllm: 'WebLLM (Local)',
+    ollama: 'Ollama (Local)'
   };
   return {
     provider: resolvedProvider,
@@ -130,20 +148,23 @@ function getCliSetup(providerOverride) {
     gemini: 'https://github.com/google-gemini/gemini-cli',
     codex: 'https://github.com/openai/codex',
     claude: 'https://docs.anthropic.com/en/docs/claude-code/cli',
-    webllm: 'https://webllm.mlc.ai/'
+    webllm: 'https://webllm.mlc.ai/',
+    ollama: 'https://ollama.com/'
   };
 
   const installCommandEnv = {
     gemini: process.env.GEMINI_INSTALL_CMD,
     codex: process.env.CODEX_INSTALL_CMD,
     claude: process.env.CLAUDE_INSTALL_CMD,
-    webllm: ''
+    webllm: '',
+    ollama: process.env.OLLAMA_INSTALL_CMD
   };
   const loginCommandEnv = {
     gemini: process.env.GEMINI_LOGIN_CMD,
     codex: process.env.CODEX_LOGIN_CMD,
     claude: process.env.CLAUDE_LOGIN_CMD,
-    webllm: ''
+    webllm: '',
+    ollama: ''
   };
 
   return {

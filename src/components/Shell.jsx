@@ -44,7 +44,8 @@ function Shell({ selectedProject, selectedSession, isActive }) {
     gemini: 'Gemini',
     codex: 'Codex',
     claude: 'Claude',
-    webllm: 'WebLLM'
+    webllm: 'WebLLM',
+    ollama: 'Ollama'
   };
 
   useEffect(() => {

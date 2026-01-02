@@ -1092,7 +1092,8 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
     gemini: 'Gemini',
     codex: 'Codex',
     claude: 'Claude',
-    webllm: 'WebLLM'
+    webllm: 'WebLLM',
+    ollama: 'Ollama'
   };
   const providerLabel = providerLabels[selectedProvider] || 'Gemini';
   const isAutoMode = isYoloMode && selectedProvider !== 'claude';
@@ -2650,17 +2651,19 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
             <div className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-all duration-200 ${
               selectedProvider === 'webllm'
                 ? 'bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-600'
+                : selectedProvider === 'ollama'
+                ? 'bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-600'
                 : isAutoMode
                 ? 'bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-600'
                 : 'bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-600'
             }`}>
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  selectedProvider === 'webllm' ? 'bg-purple-500' : isAutoMode ? 'bg-orange-500' : 'bg-cyan-500'
+                  selectedProvider === 'webllm' ? 'bg-purple-500' : selectedProvider === 'ollama' ? 'bg-emerald-500' : isAutoMode ? 'bg-orange-500' : 'bg-cyan-500'
                 }`} />
                 <span>
                   {providerLabel}{' '}
-                  {selectedProvider === 'webllm'
+                  {selectedProvider === 'webllm' || selectedProvider === 'ollama'
                     ? 'Local'
                     : isAutoMode
                     ? (selectedProvider === 'codex' ? 'Full Auto' : selectedProvider === 'claude' ? 'Default' : 'YOLO')

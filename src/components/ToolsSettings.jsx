@@ -108,11 +108,17 @@ function ToolsSettings({ isOpen, onClose }) {
     { value: 'Phi-3.5-mini-instruct-q4f32_1-MLC', label: 'Phi 3.5 Mini', description: 'Microsoft Phi model, efficient' },
     { value: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B', description: 'Google Gemma, small and fast' }
   ];
+  const defaultOllamaModels = [
+    { value: 'llama2:latest', label: 'Llama 2', description: 'Stable default model from Ollama registry' },
+    { value: 'llama3.2:1b', label: 'Llama 3.2 1B', description: 'Small model (requires compatible Ollama version)' },
+    { value: 'deepseek-r1:1.5b', label: 'DeepSeek R1 1.5B', description: 'Compact reasoning model' }
+  ];
   const defaultModelByProvider = {
     gemini: 'gemini-2.5-flash',
     codex: 'gpt-5.1-codex-max',
     claude: 'claude-3-5-sonnet-latest',
-    webllm: 'Llama-3.2-1B-Instruct-q4f32_1-MLC'
+    webllm: 'Llama-3.2-1B-Instruct-q4f32_1-MLC',
+    ollama: 'llama2:latest'
   };
 
   useEffect(() => {
@@ -131,6 +137,8 @@ function ToolsSettings({ isOpen, onClose }) {
           ? defaultClaudeModels
           : provider === 'webllm'
           ? defaultWebLLMModels
+          : provider === 'ollama'
+          ? defaultOllamaModels
           : defaultGeminiModels;
         const normalized = {
           provider,
@@ -154,7 +162,8 @@ function ToolsSettings({ isOpen, onClose }) {
       gemini: defaultGeminiModels,
       codex: defaultCodexModels,
       claude: defaultClaudeModels,
-      webllm: defaultWebLLMModels
+      webllm: defaultWebLLMModels,
+      ollama: defaultOllamaModels
     };
     const models = modelsByProvider[selectedProvider] || defaultGeminiModels;
     setAvailableModels(models);
@@ -398,7 +407,14 @@ function ToolsSettings({ isOpen, onClose }) {
         const nextProvider = settings.selectedProvider || fallbackProvider;
         setSelectedProvider(nextProvider);
         
-        const models = nextProvider === 'codex' ? defaultCodexModels : defaultGeminiModels;
+        const modelsByProvider = {
+          gemini: defaultGeminiModels,
+          codex: defaultCodexModels,
+          claude: defaultClaudeModels,
+          webllm: defaultWebLLMModels,
+          ollama: defaultOllamaModels
+        };
+        const models = modelsByProvider[nextProvider] || defaultGeminiModels;
         const fallbackModel = defaultModelByProvider[nextProvider] || cliInfo.defaultModel || 'gemini-2.5-flash';
         const candidateModel = settings.selectedModel || fallbackModel;
         const hasModel = models.some(model => model.value === candidateModel);
@@ -781,6 +797,7 @@ function ToolsSettings({ isOpen, onClose }) {
                     <option value="codex">Codex CLI</option>
                     <option value="claude">Claude CLI</option>
                     <option value="webllm">WebLLM (Local)</option>
+                    <option value="ollama">Ollama (Local)</option>
                   </select>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     {selectedProvider === 'codex'
@@ -789,6 +806,8 @@ function ToolsSettings({ isOpen, onClose }) {
                       ? 'Use Anthropic Claude CLI for coding sessions.'
                       : selectedProvider === 'webllm'
                       ? 'Run AI models locally in your browser using WebGPU. Private and offline-capable.'
+                      : selectedProvider === 'ollama'
+                      ? 'Run local Ollama models from your machine.'
                       : 'Use Google Gemini CLI for coding sessions.'}
                   </div>
                   {selectedProvider === 'webllm' && (
@@ -821,6 +840,8 @@ function ToolsSettings({ isOpen, onClose }) {
                     ? 'Codex Model'
                     : selectedProvider === 'webllm'
                     ? 'WebLLM Model'
+                    : selectedProvider === 'ollama'
+                    ? 'Ollama Model'
                     : selectedProvider === 'claude'
                     ? 'Claude Model'
                     : 'Gemini Model'}
@@ -850,7 +871,7 @@ function ToolsSettings({ isOpen, onClose }) {
             </div>
             
             {/* Skip Permissions - Not applicable for WebLLM */}
-            {selectedProvider !== 'webllm' && (
+            {selectedProvider !== 'webllm' && selectedProvider !== 'ollama' && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-orange-500" />
@@ -937,7 +958,7 @@ function ToolsSettings({ isOpen, onClose }) {
             </div>
 
             {/* Allowed Tools - Not applicable for WebLLM */}
-            {selectedProvider !== 'webllm' && (
+            {selectedProvider !== 'webllm' && selectedProvider !== 'ollama' && (
             <>
             <div className="space-y-4">
               <div className="flex items-center gap-3">
