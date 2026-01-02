@@ -1093,10 +1093,11 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
     codex: 'Codex',
     claude: 'Claude',
     webllm: 'WebLLM',
-    ollama: 'Ollama'
+    ollama: 'Ollama',
+    bmad: 'BMAD'
   };
   const providerLabel = providerLabels[selectedProvider] || 'Gemini';
-  const isAutoMode = isYoloMode && selectedProvider !== 'claude';
+  const isAutoMode = isYoloMode && selectedProvider !== 'claude' && selectedProvider !== 'bmad';
   const providerInitial = providerLabel.charAt(0);
 
   useEffect(() => {

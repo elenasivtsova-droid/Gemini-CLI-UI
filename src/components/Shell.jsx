@@ -40,12 +40,15 @@ function Shell({ selectedProject, selectedSession, isActive }) {
   const [lastSessionId, setLastSessionId] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [providerLabel, setProviderLabel] = useState('Gemini');
+  const [providerKey, setProviderKey] = useState('gemini');
+  const [lastProviderKey, setLastProviderKey] = useState('gemini');
   const providerLabels = {
     gemini: 'Gemini',
     codex: 'Codex',
     claude: 'Claude',
     webllm: 'WebLLM',
-    ollama: 'Ollama'
+    ollama: 'Ollama',
+    bmad: 'BMAD'
   };
 
   useEffect(() => {
@@ -54,8 +57,10 @@ function Shell({ selectedProject, selectedSession, isActive }) {
         const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
         const provider = settings.selectedProvider || 'gemini';
         setProviderLabel(providerLabels[provider] || 'Gemini');
+        setProviderKey(provider);
       } catch (error) {
         setProviderLabel('Gemini');
+        setProviderKey('gemini');
       }
     };
     syncProvider();
@@ -172,6 +177,31 @@ function Shell({ selectedProject, selectedSession, isActive }) {
     
     setLastSessionId(currentSessionId);
   }, [selectedSession?.id, isInitialized]);
+
+  // Restart shell when provider changes so the active CLI matches the selection
+  useEffect(() => {
+    if (!selectedProject) {
+      setLastProviderKey(providerKey);
+      return;
+    }
+    if (lastProviderKey !== providerKey && isInitialized) {
+      disconnectFromShell();
+      const allKeys = Array.from(shellSessions.keys());
+      allKeys.forEach(key => {
+        if (key.includes(selectedProject.name)) {
+          shellSessions.delete(key);
+        }
+      });
+      if (terminal.current) {
+        terminal.current.dispose();
+        terminal.current = null;
+        fitAddon.current = null;
+      }
+      setIsConnected(false);
+      setIsInitialized(false);
+    }
+    setLastProviderKey(providerKey);
+  }, [providerKey, isInitialized, selectedProject]);
 
   // Initialize terminal when component mounts
   useEffect(() => {

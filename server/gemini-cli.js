@@ -8,6 +8,58 @@ import { buildSpawnEnv, getCliCommand, getCliInfo, normalizeProvider } from './c
 
 let activeGeminiProcesses = new Map(); // Track active processes by session ID
 
+function splitCommandArgs(input) {
+  const args = [];
+  let current = '';
+  let quote = null;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i += 1) {
+    const char = input[i];
+
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === '\\' && quote !== "'") {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        args.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    args.push(current);
+  }
+
+  return args;
+}
+
 function sanitizeCliOutput(output) {
   if (!output) return '';
   // Strip ANSI escape sequences and control chars while preserving newlines.
@@ -31,7 +83,7 @@ async function spawnGemini(command, options = {}, ws) {
     let sessionCreatedSent = false; // Track if we've already sent session-created event
     let fullResponse = ''; // Accumulate the full response
     const cliProvider = normalizeProvider(options.provider);
-    const providerLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : cliProvider === 'ollama' ? 'Ollama' : 'Gemini';
+    const providerLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : cliProvider === 'ollama' ? 'Ollama' : cliProvider === 'bmad' ? 'BMAD' : 'Gemini';
     let pendingExternalSessionId = null;
     
     // Process images if provided
@@ -52,16 +104,20 @@ async function spawnGemini(command, options = {}, ws) {
     // Construct prompt if we have a command
     if (command && command.trim()) {
       if (sessionId) {
-        const externalSessionId = cliProvider === 'codex' ? sessionManager.getExternalSessionId(sessionId) : null;
-        if (!externalSessionId) {
-          const context = sessionManager.buildConversationContext(sessionId);
-          if (context) {
-            promptToUse = context + command;
+        if (cliProvider === 'bmad') {
+          promptToUse = command;
+        } else {
+          const externalSessionId = cliProvider === 'codex' ? sessionManager.getExternalSessionId(sessionId) : null;
+          if (!externalSessionId) {
+            const context = sessionManager.buildConversationContext(sessionId);
+            if (context) {
+              promptToUse = context + command;
+            } else {
+              promptToUse = command;
+            }
           } else {
             promptToUse = command;
           }
-        } else {
-          promptToUse = command;
         }
       } else {
         promptToUse = command;
@@ -83,7 +139,7 @@ async function spawnGemini(command, options = {}, ws) {
     // Handle images by saving them to temporary files and passing paths to CLI
     const tempImagePaths = [];
     let tempDir = null;
-    if (images && images.length > 0) {
+    if (images && images.length > 0 && cliProvider !== 'bmad') {
       try {
         // Create temp directory in the project directory so Gemini can access it
         // Use a non-hidden directory to avoid potential issues with CLI file access
@@ -93,6 +149,8 @@ async function spawnGemini(command, options = {}, ws) {
           ? 'claude_tmp_images'
           : cliProvider === 'ollama'
           ? 'ollama_tmp_images'
+          : cliProvider === 'bmad'
+          ? 'bmad_tmp_images'
           : 'gemini_tmp_images';
         tempDir = path.join(workingDir, tempDirName, Date.now().toString());
         await fs.mkdir(tempDir, { recursive: true });
@@ -160,6 +218,8 @@ async function spawnGemini(command, options = {}, ws) {
     } else if (cliProvider === 'ollama') {
       const modelToUse = options.model || getCliInfo(cliProvider).defaultModel;
       args.push('run', modelToUse);
+    } else if (cliProvider === 'bmad') {
+      // BMAD CLI commands do not use model selection or Gemini-specific flags.
     } else {
       // Add basic flags for Gemini
       if (options.debug) {
@@ -280,7 +340,11 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Add prompt as a positional argument at the end
     if (promptToUse) {
-      args.push(promptToUse);
+      if (cliProvider === 'bmad') {
+        args.push(...splitCommandArgs(promptToUse));
+      } else {
+        args.push(promptToUse);
+      }
     }
 
     // Try to find gemini in PATH first, then fall back to environment variable
@@ -316,7 +380,7 @@ async function spawnGemini(command, options = {}, ws) {
     
     // Add timeout handler
     let hasReceivedOutput = false;
-    const timeoutMs = cliProvider === 'codex' ? 120000 : cliProvider === 'ollama' ? 120000 : 30000; // 120s for Codex/Ollama
+    const timeoutMs = cliProvider === 'codex' ? 120000 : cliProvider === 'ollama' ? 120000 : cliProvider === 'bmad' ? 120000 : 30000; // 120s for Codex/Ollama/BMAD
     const timeout = setTimeout(() => {
       if (!hasReceivedOutput) {
         // console.error('⏰ Gemini CLI timeout - no output received after', timeoutMs, 'ms');
@@ -461,7 +525,7 @@ async function spawnGemini(command, options = {}, ws) {
       
       // For new sessions, create a session ID
       if (!sessionId && !sessionCreatedSent && !capturedSessionId) {
-        const sessionPrefix = cliProvider === 'codex' ? 'codex' : cliProvider === 'claude' ? 'claude' : cliProvider === 'ollama' ? 'ollama' : 'gemini';
+        const sessionPrefix = cliProvider === 'codex' ? 'codex' : cliProvider === 'claude' ? 'claude' : cliProvider === 'ollama' ? 'ollama' : cliProvider === 'bmad' ? 'bmad' : 'gemini';
         capturedSessionId = `${sessionPrefix}_${Date.now()}`;
         sessionCreatedSent = true;
         

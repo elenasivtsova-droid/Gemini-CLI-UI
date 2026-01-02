@@ -6,18 +6,22 @@ const provider = rawProvider === 'codex' ? 'codex'
   : rawProvider === 'webllm' ? 'webllm'
   : rawProvider === 'claude' ? 'claude'
   : rawProvider === 'ollama' ? 'ollama'
+  : rawProvider === 'bmad' ? 'bmad'
   : 'gemini';
 
 const codexHome = process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 const claudeHome = process.env.CLAUDE_HOME || path.join(os.homedir(), '.claude');
 const geminiHome = path.join(os.homedir(), '.gemini');
 const ollamaHome = process.env.OLLAMA_HOME || path.join(os.homedir(), '.ollama');
+const bmadHome = process.env.BMAD_HOME || path.join(os.homedir(), '.bmad');
 const uiHome = process.env.CLI_UI_HOME || (provider === 'codex'
   ? path.join(codexHome, 'cli-ui')
   : provider === 'claude'
   ? path.join(claudeHome, 'cli-ui')
   : provider === 'ollama'
   ? path.join(ollamaHome, 'cli-ui')
+  : provider === 'bmad'
+  ? path.join(bmadHome, 'cli-ui')
   : geminiHome);
 
 const cliModelCatalog = {
@@ -56,6 +60,9 @@ const cliModelCatalog = {
     { value: 'llama2:latest', label: 'Llama 2', description: 'Stable default model from Ollama registry' },
     { value: 'llama3.2:1b', label: 'Llama 3.2 1B', description: 'Small model (requires compatible Ollama version)' },
     { value: 'deepseek-r1:1.5b', label: 'DeepSeek R1 1.5B', description: 'Compact reasoning model' }
+  ],
+  bmad: [
+    { value: 'bmad-default', label: 'BMAD Default', description: 'BMAD CLI does not use model selection (ignored).' }
   ]
 };
 
@@ -64,7 +71,8 @@ const defaultModelByProvider = {
   codex: 'gpt-5.1-codex-max',
   claude: 'claude-3-5-sonnet-latest',
   webllm: 'Llama-3.2-1B-Instruct-q4f32_1-MLC',
-  ollama: 'llama2:latest'
+  ollama: 'llama2:latest',
+  bmad: 'bmad-default'
 };
 
 function getCliProvider() {
@@ -78,6 +86,7 @@ function normalizeProvider(providerOverride) {
   if (p === 'claude') return 'claude';
   if (p === 'webllm') return 'webllm';
   if (p === 'ollama') return 'ollama';
+  if (p === 'bmad') return 'bmad';
   return 'gemini';
 }
 
@@ -91,6 +100,9 @@ function getCliCommand(providerOverride) {
   }
   if (resolvedProvider === 'ollama') {
     return process.env.OLLAMA_PATH || 'ollama';
+  }
+  if (resolvedProvider === 'bmad') {
+    return process.env.BMAD_PATH || 'bmad';
   }
   return process.env.GEMINI_PATH || 'gemini';
 }
@@ -108,6 +120,9 @@ function getUiHome(providerOverride) {
   }
   if (resolvedProvider === 'ollama') {
     return path.join(ollamaHome, 'cli-ui');
+  }
+  if (resolvedProvider === 'bmad') {
+    return path.join(bmadHome, 'cli-ui');
   }
   return geminiHome;
 }
@@ -132,7 +147,8 @@ function getCliInfo(providerOverride) {
     codex: 'Codex CLI',
     claude: 'Claude CLI',
     webllm: 'WebLLM (Local)',
-    ollama: 'Ollama (Local)'
+    ollama: 'Ollama (Local)',
+    bmad: 'BMAD CLI'
   };
   return {
     provider: resolvedProvider,
@@ -149,7 +165,8 @@ function getCliSetup(providerOverride) {
     codex: 'https://github.com/openai/codex',
     claude: 'https://docs.anthropic.com/en/docs/claude-code/cli',
     webllm: 'https://webllm.mlc.ai/',
-    ollama: 'https://ollama.com/'
+    ollama: 'https://ollama.com/',
+    bmad: 'https://github.com/bmad-code-org/BMAD-METHOD'
   };
 
   const installCommandEnv = {
@@ -157,14 +174,16 @@ function getCliSetup(providerOverride) {
     codex: process.env.CODEX_INSTALL_CMD,
     claude: process.env.CLAUDE_INSTALL_CMD,
     webllm: '',
-    ollama: process.env.OLLAMA_INSTALL_CMD
+    ollama: process.env.OLLAMA_INSTALL_CMD,
+    bmad: process.env.BMAD_INSTALL_CMD
   };
   const loginCommandEnv = {
     gemini: process.env.GEMINI_LOGIN_CMD,
     codex: process.env.CODEX_LOGIN_CMD,
     claude: process.env.CLAUDE_LOGIN_CMD,
     webllm: '',
-    ollama: ''
+    ollama: '',
+    bmad: process.env.BMAD_LOGIN_CMD
   };
 
   return {
