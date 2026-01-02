@@ -96,6 +96,11 @@ function ToolsSettings({ isOpen, onClose }) {
     { value: 'o3', label: 'o3', description: 'Reasoning-focused model' },
     { value: 'o4-mini', label: 'o4-mini', description: 'Fast, lightweight reasoning model' }
   ];
+  const defaultClaudeModels = [
+    { value: 'claude-3-7-sonnet-latest', label: 'Claude 3.7 Sonnet', description: 'Strong reasoning and coding with balanced speed' },
+    { value: 'claude-3-5-sonnet-latest', label: 'Claude 3.5 Sonnet', description: 'High-quality output with reliable coding performance' },
+    { value: 'claude-3-5-haiku-latest', label: 'Claude 3.5 Haiku', description: 'Fast, lightweight model for quick iterations' }
+  ];
   const defaultWebLLMModels = [
     { value: 'Llama-3.2-1B-Instruct-q4f32_1-MLC', label: 'Llama 3.2 1B', description: 'Smallest model, fastest loading (Recommended to test)' },
     { value: 'Llama-3.2-3B-Instruct-q4f32_1-MLC', label: 'Llama 3.2 3B', description: 'Lightweight model, good balance' },
@@ -106,6 +111,7 @@ function ToolsSettings({ isOpen, onClose }) {
   const defaultModelByProvider = {
     gemini: 'gemini-2.5-flash',
     codex: 'gpt-5.1-codex-max',
+    claude: 'claude-3-5-sonnet-latest',
     webllm: 'Llama-3.2-1B-Instruct-q4f32_1-MLC'
   };
 
@@ -118,11 +124,19 @@ function ToolsSettings({ isOpen, onClose }) {
         const data = await response.json();
         if (!isActive) return;
         
+        const provider = data.provider || 'gemini';
+        const fallbackModels = provider === 'codex'
+          ? defaultCodexModels
+          : provider === 'claude'
+          ? defaultClaudeModels
+          : provider === 'webllm'
+          ? defaultWebLLMModels
+          : defaultGeminiModels;
         const normalized = {
-          provider: data.provider || 'gemini',
+          provider,
           displayName: data.displayName || 'Gemini CLI',
-          defaultModel: data.defaultModel || 'gemini-2.5-flash',
-          models: Array.isArray(data.models) && data.models.length > 0 ? data.models : defaultGeminiModels
+          defaultModel: data.defaultModel || defaultModelByProvider[provider] || 'gemini-2.5-flash',
+          models: Array.isArray(data.models) && data.models.length > 0 ? data.models : fallbackModels
         };
         setCliInfo(normalized);
       } catch (error) {
@@ -139,6 +153,7 @@ function ToolsSettings({ isOpen, onClose }) {
     const modelsByProvider = {
       gemini: defaultGeminiModels,
       codex: defaultCodexModels,
+      claude: defaultClaudeModels,
       webllm: defaultWebLLMModels
     };
     const models = modelsByProvider[selectedProvider] || defaultGeminiModels;
@@ -764,11 +779,14 @@ function ToolsSettings({ isOpen, onClose }) {
                   >
                     <option value="gemini">Gemini CLI</option>
                     <option value="codex">Codex CLI</option>
+                    <option value="claude">Claude CLI</option>
                     <option value="webllm">WebLLM (Local)</option>
                   </select>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     {selectedProvider === 'codex'
                       ? 'Use OpenAI Codex CLI for coding sessions.'
+                      : selectedProvider === 'claude'
+                      ? 'Use Anthropic Claude CLI for coding sessions.'
                       : selectedProvider === 'webllm'
                       ? 'Run AI models locally in your browser using WebGPU. Private and offline-capable.'
                       : 'Use Google Gemini CLI for coding sessions.'}
@@ -799,7 +817,13 @@ function ToolsSettings({ isOpen, onClose }) {
               <div className="flex items-center gap-3">
                 <Zap className="w-5 h-5 text-cyan-500" />
                 <h3 className="text-lg font-medium text-foreground">
-                  {selectedProvider === 'codex' ? 'Codex Model' : selectedProvider === 'webllm' ? 'WebLLM Model' : 'Gemini Model'}
+                  {selectedProvider === 'codex'
+                    ? 'Codex Model'
+                    : selectedProvider === 'webllm'
+                    ? 'WebLLM Model'
+                    : selectedProvider === 'claude'
+                    ? 'Claude Model'
+                    : 'Gemini Model'}
                 </h3>
               </div>
               <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
@@ -844,11 +868,17 @@ function ToolsSettings({ isOpen, onClose }) {
                   />
                   <div>
                     <div className="font-medium text-orange-900 dark:text-orange-100">
-                      {selectedProvider === 'codex' ? 'Full auto - Skip approvals' : 'YOLO mode - Skip all confirmations'}
+                      {selectedProvider === 'codex'
+                        ? 'Full auto - Skip approvals'
+                        : selectedProvider === 'claude'
+                        ? 'Skip confirmations (if supported)'
+                        : 'YOLO mode - Skip all confirmations'}
                     </div>
                     <div className="text-sm text-orange-700 dark:text-orange-300">
                       {selectedProvider === 'codex'
                         ? 'Equivalent to --full-auto --sandbox danger-full-access'
+                        : selectedProvider === 'claude'
+                        ? 'Claude CLI does not support an auto-approve flag yet.'
                         : 'Equivalent to --yolo flag (use with caution)'}
                     </div>
                   </div>

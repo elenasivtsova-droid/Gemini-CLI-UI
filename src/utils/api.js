@@ -19,6 +19,21 @@ export const authenticatedFetch = (url, options = {}) => {
   });
 };
 
+const getSelectedProvider = () => {
+  try {
+    const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
+    return settings.selectedProvider || 'gemini';
+  } catch (error) {
+    return 'gemini';
+  }
+};
+
+const withProvider = (url) => {
+  const provider = getSelectedProvider();
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}provider=${encodeURIComponent(provider)}`;
+};
+
 // API endpoints
 export const api = {
   // Auth endpoints (no token required)
@@ -40,27 +55,27 @@ export const api = {
   
   // Protected endpoints
   config: () => authenticatedFetch('/api/config'),
-  cliInfo: () => authenticatedFetch('/api/cli-info'),
-  projects: () => authenticatedFetch('/api/projects'),
+  cliInfo: () => authenticatedFetch(withProvider('/api/cli-info')),
+  projects: () => authenticatedFetch(withProvider('/api/projects')),
   sessions: (projectName, limit = 5, offset = 0) => 
-    authenticatedFetch(`/api/projects/${projectName}/sessions?limit=${limit}&offset=${offset}`),
+    authenticatedFetch(withProvider(`/api/projects/${projectName}/sessions?limit=${limit}&offset=${offset}`)),
   sessionMessages: (projectName, sessionId) =>
-    authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}/messages`),
+    authenticatedFetch(withProvider(`/api/projects/${projectName}/sessions/${sessionId}/messages`)),
   renameProject: (projectName, displayName) =>
-    authenticatedFetch(`/api/projects/${projectName}/rename`, {
+    authenticatedFetch(withProvider(`/api/projects/${projectName}/rename`), {
       method: 'PUT',
       body: JSON.stringify({ displayName }),
     }),
   deleteSession: (projectName, sessionId) =>
-    authenticatedFetch(`/api/projects/${projectName}/sessions/${sessionId}`, {
+    authenticatedFetch(withProvider(`/api/projects/${projectName}/sessions/${sessionId}`), {
       method: 'DELETE',
     }),
   deleteProject: (projectName) =>
-    authenticatedFetch(`/api/projects/${projectName}`, {
+    authenticatedFetch(withProvider(`/api/projects/${projectName}`), {
       method: 'DELETE',
     }),
   createProject: (path) =>
-    authenticatedFetch('/api/projects/create', {
+    authenticatedFetch(withProvider('/api/projects/create'), {
       method: 'POST',
       body: JSON.stringify({ path }),
     }),
@@ -72,7 +87,7 @@ export const api = {
       body: JSON.stringify({ filePath, content }),
     }),
   getFiles: (projectName) =>
-    authenticatedFetch(`/api/projects/${projectName}/files`),
+    authenticatedFetch(withProvider(`/api/projects/${projectName}/files`)),
   transcribe: (formData) =>
     authenticatedFetch('/api/transcribe', {
       method: 'POST',

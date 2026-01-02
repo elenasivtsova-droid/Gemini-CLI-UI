@@ -4,7 +4,7 @@ import path from 'path';
 import os from 'os';
 import sessionManager from './sessionManager.js';
 import GeminiResponseHandler from './gemini-response-handler.js';
-import { getCliCommand, getCliInfo, normalizeProvider } from './cli-config.js';
+import { buildSpawnEnv, getCliCommand, getCliInfo, normalizeProvider } from './cli-config.js';
 
 let activeGeminiProcesses = new Map(); // Track active processes by session ID
 
@@ -15,6 +15,7 @@ async function spawnGemini(command, options = {}, ws) {
     let sessionCreatedSent = false; // Track if we've already sent session-created event
     let fullResponse = ''; // Accumulate the full response
     const cliProvider = normalizeProvider(options.provider);
+    const providerLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : 'Gemini';
     let pendingExternalSessionId = null;
     
     // Process images if provided
@@ -55,7 +56,12 @@ async function spawnGemini(command, options = {}, ws) {
     // Debug - cwd and projectPath
     // Clean the path by removing any non-printable characters
     const cleanPath = (cwd || process.cwd()).replace(/[^\x20-\x7E]/g, '').trim();
-    const workingDir = cleanPath;
+    let workingDir = cleanPath;
+    try {
+      await fs.access(workingDir);
+    } catch {
+      workingDir = process.env.HOME || process.cwd();
+    }
     // Debug - workingDir
     
     // Handle images by saving them to temporary files and passing paths to CLI
@@ -65,7 +71,11 @@ async function spawnGemini(command, options = {}, ws) {
       try {
         // Create temp directory in the project directory so Gemini can access it
         // Use a non-hidden directory to avoid potential issues with CLI file access
-        const tempDirName = cliProvider === 'codex' ? 'codex_tmp_images' : 'gemini_tmp_images';
+        const tempDirName = cliProvider === 'codex'
+          ? 'codex_tmp_images'
+          : cliProvider === 'claude'
+          ? 'claude_tmp_images'
+          : 'gemini_tmp_images';
         tempDir = path.join(workingDir, tempDirName, Date.now().toString());
         await fs.mkdir(tempDir, { recursive: true });
         
@@ -107,7 +117,7 @@ async function spawnGemini(command, options = {}, ws) {
     // Skip resume handling
     
     if (cliProvider === 'codex') {
-      args.push('exec', '--json');
+      args.push('exec', '--skip-git-repo-check', '--json');
       const modelToUse = options.model || getCliInfo(cliProvider).defaultModel;
       if (modelToUse) {
         args.push('--model', modelToUse);
@@ -123,6 +133,11 @@ async function spawnGemini(command, options = {}, ws) {
       const externalSessionId = sessionId ? sessionManager.getExternalSessionId(sessionId) : null;
       if (externalSessionId) {
         args.push('resume', externalSessionId);
+      }
+    } else if (cliProvider === 'claude') {
+      const modelToUse = options.model || getCliInfo(cliProvider).defaultModel;
+      if (modelToUse) {
+        args.push('--model', modelToUse);
       }
     } else {
       // Add basic flags for Gemini
@@ -251,10 +266,16 @@ async function spawnGemini(command, options = {}, ws) {
     const geminiPath = getCliCommand(cliProvider);
     // console.log('Full command:', geminiPath, args.join(' '));
     
+    const spawnEnv = buildSpawnEnv(process.env);
+    if (process.env.CLI_DEBUG_PATHS === '1') {
+      // Useful for diagnosing spawn ENOENT issues without always spamming logs.
+      // eslint-disable-next-line no-console
+      console.log('[cli-spawn] PATH=', spawnEnv.PATH);
+    }
     const geminiProcess = spawn(geminiPath, args, {
       cwd: workingDir,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env } // Inherit all environment variables
+      env: spawnEnv // Inherit all environment variables plus a safe PATH
     });
     
     // Attach temp file info to process for cleanup later
@@ -280,7 +301,7 @@ async function spawnGemini(command, options = {}, ws) {
         // console.error('⏰ Gemini CLI timeout - no output received after', timeoutMs, 'ms');
         ws.send(JSON.stringify({
           type: 'gemini-error',
-          error: `${cliProvider === 'codex' ? 'Codex' : 'Gemini'} CLI timeout - no response received`
+          error: `${providerLabel} CLI timeout - no response received`
         }));
         geminiProcess.kill('SIGTERM');
       }
@@ -360,7 +381,7 @@ async function spawnGemini(command, options = {}, ws) {
             }));
           }
         }
-      } else {
+      } else if (cliProvider === 'gemini') {
         // Filter out debug messages and system messages
         const lines = rawOutput.split('\n');
         const filteredLines = lines.filter(line => {
@@ -393,11 +414,28 @@ async function spawnGemini(command, options = {}, ws) {
             }));
           }
         }
+      } else {
+        const trimmedOutput = rawOutput.trim();
+        if (trimmedOutput) {
+          fullResponse += (fullResponse ? '\n' : '') + trimmedOutput;
+          
+          if (responseHandler) {
+            responseHandler.processData(trimmedOutput);
+          } else {
+            ws.send(JSON.stringify({
+              type: 'gemini-response',
+              data: {
+                type: 'message',
+                content: trimmedOutput
+              }
+            }));
+          }
+        }
       }
       
       // For new sessions, create a session ID
       if (!sessionId && !sessionCreatedSent && !capturedSessionId) {
-        const sessionPrefix = cliProvider === 'codex' ? 'codex' : 'gemini';
+        const sessionPrefix = cliProvider === 'codex' ? 'codex' : cliProvider === 'claude' ? 'claude' : 'gemini';
         capturedSessionId = `${sessionPrefix}_${Date.now()}`;
         sessionCreatedSent = true;
         
@@ -511,7 +549,7 @@ async function spawnGemini(command, options = {}, ws) {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`Gemini CLI exited with code ${code}`));
+        reject(new Error(`${providerLabel} CLI exited with code ${code}`));
       }
     });
     

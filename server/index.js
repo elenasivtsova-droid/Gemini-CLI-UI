@@ -38,7 +38,7 @@ import mime from 'mime-types';
 
 import { getProjects, getSessions, getSessionMessages, renameProject, deleteSession, deleteProject, addProjectManually, extractProjectDirectory, clearProjectDirectoryCache } from './projects.js';
 import { spawnGemini, abortGeminiSession } from './gemini-cli.js';
-import { getCliCommand, getCliInfo, getCliProvider, getProjectsRoot, normalizeProvider } from './cli-config.js';
+import { buildSpawnEnv, getCliCommand, getCliInfo, getCliProvider, getProjectsRoot, normalizeProvider } from './cli-config.js';
 import sessionManager from './sessionManager.js';
 import gitRoutes from './routes/git.js';
 import authRoutes from './routes/auth.js';
@@ -46,91 +46,91 @@ import mcpRoutes from './routes/mcp.js';
 import { initializeDatabase } from './database/db.js';
 import { validateApiKey, authenticateToken, authenticateWebSocket } from './middleware/auth.js';
 
-// File system watcher for projects folder
-let projectsWatcher = null;
+// File system watchers for projects folders
+const projectWatchers = new Map();
 const connectedClients = new Set();
 
-// Setup file system watcher for Gemini projects folder using chokidar
+// Setup file system watchers for provider projects folders using chokidar
 async function setupProjectsWatcher() {
   const chokidar = (await import('chokidar')).default;
-  const geminiProjectsPath = getProjectsRoot();
+  const providersToWatch = ['gemini', 'codex', 'claude'];
+  projectWatchers.forEach(watcher => watcher.close());
+  projectWatchers.clear();
   
-  if (projectsWatcher) {
-    projectsWatcher.close();
-  }
-  
-  try {
-    await fsPromises.mkdir(geminiProjectsPath, { recursive: true });
-    // Initialize chokidar watcher with optimized settings
-    projectsWatcher = chokidar.watch(geminiProjectsPath, {
-      ignored: [
-        '**/node_modules/**',
-        '**/.git/**',
-        '**/dist/**',
-        '**/build/**',
-        '**/*.tmp',
-        '**/*.swp',
-        '**/.DS_Store'
-      ],
-      persistent: true,
-      ignoreInitial: true, // Don't fire events for existing files on startup
-      followSymlinks: false,
-      depth: 10, // Reasonable depth limit
-      awaitWriteFinish: {
-        stabilityThreshold: 100, // Wait 100ms for file to stabilize
-        pollInterval: 50
-      }
-    });
-    
-    // Debounce function to prevent excessive notifications
-    let debounceTimer;
-    const debouncedUpdate = async (eventType, filePath) => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(async () => {
-        try {
-          
-          // Clear project directory cache when files change
-          clearProjectDirectoryCache();
-          
-          // Get updated projects list
-          const updatedProjects = await getProjects();
-          
-          // Notify all connected clients about the project changes
-          const updateMessage = JSON.stringify({
-            type: 'projects_updated',
-            projects: updatedProjects,
-            timestamp: new Date().toISOString(),
-            changeType: eventType,
-            changedFile: path.relative(geminiProjectsPath, filePath)
-          });
-          
-          connectedClients.forEach(client => {
-            if (client.readyState === client.OPEN) {
-              client.send(updateMessage);
-            }
-          });
-          
-        } catch (error) {
-          // console.error('❌ Error handling project changes:', error);
+  for (const provider of providersToWatch) {
+    const projectsPath = getProjectsRoot(provider);
+    try {
+      await fsPromises.mkdir(projectsPath, { recursive: true });
+      const watcher = chokidar.watch(projectsPath, {
+        ignored: [
+          '**/node_modules/**',
+          '**/.git/**',
+          '**/dist/**',
+          '**/build/**',
+          '**/*.tmp',
+          '**/*.swp',
+          '**/.DS_Store'
+        ],
+        persistent: true,
+        ignoreInitial: true, // Don't fire events for existing files on startup
+        followSymlinks: false,
+        depth: 10, // Reasonable depth limit
+        awaitWriteFinish: {
+          stabilityThreshold: 100, // Wait 100ms for file to stabilize
+          pollInterval: 50
         }
-      }, 300); // 300ms debounce (slightly faster than before)
-    };
-    
-    // Set up event listeners
-    projectsWatcher
-      .on('add', (filePath) => debouncedUpdate('add', filePath))
-      .on('change', (filePath) => debouncedUpdate('change', filePath))
-      .on('unlink', (filePath) => debouncedUpdate('unlink', filePath))
-      .on('addDir', (dirPath) => debouncedUpdate('addDir', dirPath))
-      .on('unlinkDir', (dirPath) => debouncedUpdate('unlinkDir', dirPath))
-      .on('error', (error) => {
-        // console.error('❌ Chokidar watcher error:', error);
-      })
-      .on('ready', () => {
       });
-    
-  } catch (error) {
-    // console.error('❌ Failed to setup projects watcher:', error);
+      projectWatchers.set(provider, watcher);
+      
+      // Debounce function to prevent excessive notifications
+      let debounceTimer;
+      const debouncedUpdate = async (eventType, filePath) => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(async () => {
+          try {
+            // Clear project directory cache when files change
+            clearProjectDirectoryCache();
+            
+            // Get updated projects list
+            const updatedProjects = await getProjects(provider);
+            
+            // Notify all connected clients about the project changes
+            const updateMessage = JSON.stringify({
+              type: 'projects_updated',
+              provider,
+              projects: updatedProjects,
+              timestamp: new Date().toISOString(),
+              changeType: eventType,
+              changedFile: path.relative(projectsPath, filePath)
+            });
+            
+            connectedClients.forEach(client => {
+              if (client.readyState === client.OPEN) {
+                client.send(updateMessage);
+              }
+            });
+            
+          } catch (error) {
+            // console.error('❌ Error handling project changes:', error);
+          }
+        }, 300); // 300ms debounce (slightly faster than before)
+      };
+      
+      // Set up event listeners
+      watcher
+        .on('add', (filePath) => debouncedUpdate('add', filePath))
+        .on('change', (filePath) => debouncedUpdate('change', filePath))
+        .on('unlink', (filePath) => debouncedUpdate('unlink', filePath))
+        .on('addDir', (dirPath) => debouncedUpdate('addDir', dirPath))
+        .on('unlinkDir', (dirPath) => debouncedUpdate('unlinkDir', dirPath))
+        .on('error', (error) => {
+          // console.error('❌ Chokidar watcher error:', error);
+        })
+        .on('ready', () => {
+        });
+    } catch (error) {
+      // console.error('❌ Failed to setup projects watcher:', error);
+    }
   }
 }
 
@@ -201,7 +201,8 @@ app.get('/api/cli-info', authenticateToken, (req, res) => {
 
 app.get('/api/projects', authenticateToken, async (req, res) => {
   try {
-    const projects = await getProjects();
+    const provider = req.query.provider || null;
+    const projects = await getProjects(provider);
     res.json(projects);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -210,8 +211,9 @@ app.get('/api/projects', authenticateToken, async (req, res) => {
 
 app.get('/api/projects/:projectName/sessions', authenticateToken, async (req, res) => {
   try {
+    const provider = req.query.provider || null;
     // Extract the actual project directory path
-    const projectPath = await extractProjectDirectory(req.params.projectName);
+    const projectPath = await extractProjectDirectory(req.params.projectName, provider);
     
     // Get sessions from sessionManager
     const sessions = sessionManager.getProjectSessions(projectPath);
@@ -244,7 +246,8 @@ app.get('/api/projects/:projectName/sessions/:sessionId/messages', authenticateT
 app.put('/api/projects/:projectName/rename', authenticateToken, async (req, res) => {
   try {
     const { displayName } = req.body;
-    await renameProject(req.params.projectName, displayName);
+    const provider = req.query.provider || null;
+    await renameProject(req.params.projectName, displayName, provider);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -266,7 +269,8 @@ app.delete('/api/projects/:projectName/sessions/:sessionId', authenticateToken, 
 app.delete('/api/projects/:projectName', authenticateToken, async (req, res) => {
   try {
     const { projectName } = req.params;
-    await deleteProject(projectName);
+    const provider = req.query.provider || null;
+    await deleteProject(projectName, provider);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -277,12 +281,13 @@ app.delete('/api/projects/:projectName', authenticateToken, async (req, res) => 
 app.post('/api/projects/create', authenticateToken, async (req, res) => {
   try {
     const { path: projectPath } = req.body;
+    const provider = req.query.provider || null;
     
     if (!projectPath || !projectPath.trim()) {
       return res.status(400).json({ error: 'Project path is required' });
     }
     
-    const project = await addProjectManually(projectPath.trim());
+    const project = await addProjectManually(projectPath.trim(), null, provider);
     res.json({ success: true, project });
   } catch (error) {
     // console.error('Error creating project:', error);
@@ -415,13 +420,14 @@ app.put('/api/projects/:projectName/file', authenticateToken, async (req, res) =
 
 app.get('/api/projects/:projectName/files', authenticateToken, async (req, res) => {
   try {
+    const provider = req.query.provider || null;
     
     // Using fsPromises from import
     
     // Use extractProjectDirectory to get the actual project path
     let actualPath;
     try {
-      actualPath = await extractProjectDirectory(req.params.projectName);
+      actualPath = await extractProjectDirectory(req.params.projectName, provider);
     } catch (error) {
       // console.error('Error extracting project directory:', error);
       // Fallback to simple dash replacement
@@ -523,7 +529,7 @@ function handleShellConnection(ws) {
         
         // First send a welcome message
         const cliProvider = normalizeProvider(toolsSettings?.provider || null);
-        const cliLabel = cliProvider === 'codex' ? 'Codex' : 'Gemini';
+        const cliLabel = cliProvider === 'codex' ? 'Codex' : cliProvider === 'claude' ? 'Claude' : 'Gemini';
         const welcomeMsg = hasSession ? 
           `\x1b[36mResuming ${cliLabel} session ${sessionId} in: ${projectPath}\x1b[0m\r\n` :
           `\x1b[36mStarting new ${cliLabel} session in: ${projectPath}\x1b[0m\r\n`;
@@ -543,7 +549,7 @@ function handleShellConnection(ws) {
             // console.error('❌ CLI not found in PATH');
             ws.send(JSON.stringify({
               type: 'output',
-              data: `\r\n\x1b[31mError: ${cliPath} not found. Please check:\x1b[0m\r\n\x1b[33m1. Install the CLI globally (gemini or codex)\x1b[0m\r\n\x1b[33m2. Or set GEMINI_PATH/CODEX_PATH in .env file\x1b[0m\r\n`
+              data: `\r\n\x1b[31mError: ${cliPath} not found. Please check:\x1b[0m\r\n\x1b[33m1. Install the CLI globally (gemini, codex, or claude)\x1b[0m\r\n\x1b[33m2. Or set GEMINI_PATH/CODEX_PATH/CLAUDE_PATH in .env file\x1b[0m\r\n`
             }));
             return;
           }
@@ -552,11 +558,11 @@ function handleShellConnection(ws) {
           let geminiCommand = cliPath;
           
           // Add YOLO flag if enabled
-          if (toolsSettings?.skipPermissions && cliProvider !== 'codex') {
+          if (toolsSettings?.skipPermissions && cliProvider === 'gemini') {
             geminiCommand += ' --yolo';
           }
           
-          if (hasSession && sessionId && cliProvider !== 'codex') {
+          if (hasSession && sessionId && cliProvider === 'gemini') {
             // Try to resume session, but with fallback to new session if it fails
             geminiCommand += ` --resume ${sessionId} || ${cliPath}${toolsSettings?.skipPermissions ? ' --yolo' : ''}`;
           } else if (cliProvider === 'codex') {
@@ -568,19 +574,25 @@ function handleShellConnection(ws) {
           
           
           // Start shell using PTY for proper terminal emulation
+          const spawnEnv = buildSpawnEnv({
+            ...process.env,
+            TERM: 'xterm-256color',
+            COLORTERM: 'truecolor',
+            FORCE_COLOR: '3',
+            // Override browser opening commands to echo URL for detection
+            BROWSER: 'echo "OPEN_URL:"'
+          });
+          if (process.env.CLI_DEBUG_PATHS === '1') {
+            // eslint-disable-next-line no-console
+            console.log('[cli-pty] PATH=', spawnEnv.PATH);
+          }
+
           shellProcess = pty.spawn('bash', ['-c', shellCommand], {
             name: 'xterm-256color',
             cols: 80,
             rows: 24,
             cwd: process.env.HOME || '/', // Start from home directory
-            env: { 
-              ...process.env,
-              TERM: 'xterm-256color',
-              COLORTERM: 'truecolor',
-              FORCE_COLOR: '3',
-              // Override browser opening commands to echo URL for detection
-              BROWSER: 'echo "OPEN_URL:"'
-            }
+            env: spawnEnv
           });
           
           // console.log('🟢 Shell process started with PTY, PID:', shellProcess.pid);

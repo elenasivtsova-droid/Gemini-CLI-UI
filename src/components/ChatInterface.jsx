@@ -1088,7 +1088,14 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const webllmAbortController = useRef(null);
   const webllmConversation = useRef([]);
 
-  const providerLabel = selectedProvider === 'codex' ? 'Codex' : selectedProvider === 'webllm' ? 'WebLLM' : 'Gemini';
+  const providerLabels = {
+    gemini: 'Gemini',
+    codex: 'Codex',
+    claude: 'Claude',
+    webllm: 'WebLLM'
+  };
+  const providerLabel = providerLabels[selectedProvider] || 'Gemini';
+  const isAutoMode = isYoloMode && selectedProvider !== 'claude';
   const providerInitial = providerLabel.charAt(0);
 
   useEffect(() => {
@@ -2636,17 +2643,21 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
             <div className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-all duration-200 ${
               selectedProvider === 'webllm'
                 ? 'bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-600'
-                : isYoloMode
+                : isAutoMode
                 ? 'bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-600'
                 : 'bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-600'
             }`}>
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${
-                  selectedProvider === 'webllm' ? 'bg-purple-500' : isYoloMode ? 'bg-orange-500' : 'bg-cyan-500'
+                  selectedProvider === 'webllm' ? 'bg-purple-500' : isAutoMode ? 'bg-orange-500' : 'bg-cyan-500'
                 }`} />
                 <span>
-                  {selectedProvider === 'webllm' ? 'WebLLM' : selectedProvider === 'codex' ? 'Codex' : 'Gemini'}{' '}
-                  {selectedProvider === 'webllm' ? 'Local' : isYoloMode ? (selectedProvider === 'codex' ? 'Full Auto' : 'YOLO') : 'Default'}
+                  {providerLabel}{' '}
+                  {selectedProvider === 'webllm'
+                    ? 'Local'
+                    : isAutoMode
+                    ? (selectedProvider === 'codex' ? 'Full Auto' : selectedProvider === 'claude' ? 'Default' : 'YOLO')
+                    : 'Default'}
                 </span>
                 <span className="text-xs opacity-75">• {selectedModel.split('-').slice(0, 3).join('-')}</span>
               </div>
@@ -2752,7 +2763,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                 const isExpanded = e.target.scrollHeight > lineHeight * 2;
                 setIsTextareaExpanded(isExpanded);
               }}
-              placeholder={`Ask ${selectedProvider === 'codex' ? 'Codex' : 'Gemini'} to help with your code... (@ to reference files)`}
+              placeholder={`Ask ${providerLabel} to help with your code... (@ to reference files)`}
               disabled={isLoading}
               rows={1}
               className="chat-input-placeholder w-full pl-12 pr-28 sm:pr-40 py-3 sm:py-4 bg-transparent rounded-2xl focus:outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50 resize-none min-h-[40px] sm:min-h-[56px] max-h-[40vh] sm:max-h-[300px] overflow-y-auto text-sm sm:text-base transition-all duration-200"

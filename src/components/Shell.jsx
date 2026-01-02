@@ -39,6 +39,35 @@ function Shell({ selectedProject, selectedSession, isActive }) {
   const [isRestarting, setIsRestarting] = useState(false);
   const [lastSessionId, setLastSessionId] = useState(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [providerLabel, setProviderLabel] = useState('Gemini');
+  const providerLabels = {
+    gemini: 'Gemini',
+    codex: 'Codex',
+    claude: 'Claude',
+    webllm: 'WebLLM'
+  };
+
+  useEffect(() => {
+    const syncProvider = () => {
+      try {
+        const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
+        const provider = settings.selectedProvider || 'gemini';
+        setProviderLabel(providerLabels[provider] || 'Gemini');
+      } catch (error) {
+        setProviderLabel('Gemini');
+      }
+    };
+    syncProvider();
+    const handleStorage = (event) => {
+      if (event.key === 'gemini-tools-settings') {
+        syncProvider();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
 
   // Connect to shell function
   const connectToShell = () => {
@@ -645,7 +674,7 @@ function Shell({ selectedProject, selectedSession, isActive }) {
               <p className="text-gray-400 text-sm mt-3 px-2">
                 {selectedSession ? 
                   `Resume session: ${selectedSession.summary.slice(0, 50)}...` : 
-                  'Start a new Gemini session'
+                  `Start a new ${providerLabel} session`
                 }
               </p>
             </div>
@@ -661,7 +690,7 @@ function Shell({ selectedProject, selectedSession, isActive }) {
                 <span className="text-base font-medium">Connecting to shell...</span>
               </div>
               <p className="text-gray-400 text-sm mt-3 px-2">
-                Starting Gemini CLI in {selectedProject.displayName}
+                Starting {providerLabel} CLI in {selectedProject.displayName}
               </p>
             </div>
           </div>

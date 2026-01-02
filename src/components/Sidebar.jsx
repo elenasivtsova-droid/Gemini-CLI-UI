@@ -421,7 +421,7 @@ function Sidebar({
               <MessageSquare className="w-4 h-4 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-foreground">Gemini CLI UI</h1>
+              <h1 className="text-lg font-bold text-foreground">cli ui</h1>
               <p className="text-sm text-muted-foreground">AI coding assistant interface</p>
             </div>
           </div>
@@ -463,7 +463,7 @@ function Sidebar({
                 <MessageSquare className="w-4 h-4 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-lg font-semibold text-foreground">Gemini CLI UI</h1>
+                <h1 className="text-lg font-semibold text-foreground">cli ui</h1>
                 <p className="text-sm text-muted-foreground">Projects</p>
               </div>
             </div>

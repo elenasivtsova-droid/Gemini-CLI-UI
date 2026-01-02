@@ -145,6 +145,18 @@ function AppContent() {
       const latestMessage = messages[messages.length - 1];
       
       if (latestMessage.type === 'projects_updated') {
+        const activeProvider = (() => {
+          try {
+            const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
+            return settings.selectedProvider || 'gemini';
+          } catch (error) {
+            return 'gemini';
+          }
+        })();
+        
+        if (latestMessage.provider && latestMessage.provider !== activeProvider) {
+          return;
+        }
         
         // Session Protection Logic: Allow additions but prevent changes during active conversations
         // This allows new sessions/projects to appear in sidebar while protecting active chat messages

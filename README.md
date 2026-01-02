@@ -55,6 +55,7 @@ A desktop and mobile UI for [Gemini CLI](https://github.com/google-gemini/gemini
 - One of:
   - [Gemini CLI](https://github.com/google-gemini/gemini-cli) installed and configured
   - [Codex CLI](https://github.com/openai/codex) installed and configured
+  - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code/cli) installed and configured
 
 ### Installation
 
@@ -77,13 +78,9 @@ cp .env.example .env
 
 **Note**: The `.env` file has been removed for security. Always copy `.env.example` to `.env` when using and modify settings as needed.
 
-#### CLI Provider (Gemini or Codex)
+#### CLI Provider (Gemini, Codex, or Claude)
 
-By default the UI targets Gemini CLI. To use Codex CLI, set:
-
-```bash
-CLI_PROVIDER=codex
-```
+Select your provider in the UI Settings. Environment variables are only needed to point at custom CLI binary paths or homes.
 
 Optional overrides:
 
@@ -93,10 +90,16 @@ CODEX_HOME=~/.codex     # Codex home (config, sessions)
 CLI_UI_HOME=~/.codex/cli-ui  # UI metadata (projects/sessions)
 ```
 
-To switch back to Gemini:
+Claude overrides:
 
 ```bash
-CLI_PROVIDER=gemini
+CLAUDE_PATH=claude
+CLAUDE_HOME=~/.claude
+```
+
+Gemini overrides:
+
+```bash
 GEMINI_PATH=gemini
 ```
 
@@ -138,7 +141,7 @@ The UI automatically discovers Gemini CLI projects from `~/.gemini/projects/` an
 - **Project Actions** - Rename, delete, and organize projects
 - **Smart Navigation** - Quick access to recent projects and sessions
 
-When `CLI_PROVIDER=codex`, UI metadata lives under `~/.codex/cli-ui/` by default (configurable via `CLI_UI_HOME`).
+When using Codex, UI metadata lives under `~/.codex/cli-ui/` by default (configurable via `CLI_UI_HOME`).
 
 #### Chat Interface
 - **Use responsive chat or Gemini CLI** - You can either use the adapted chat interface or use the shell button to connect to Gemini CLI
