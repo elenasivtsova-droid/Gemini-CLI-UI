@@ -26,6 +26,7 @@ import GeminiStatus from './GeminiStatus';
 import { MicButton } from './MicButton.jsx';
 import { api } from '../utils/api';
 import { playNotificationSound } from '../utils/notificationSound';
+import * as webllmEngine from '../utils/webllmEngine';
 
 // Memoized message component to prevent unnecessary re-renders
 const MessageComponent = memo(({ message, index, prevMessage, createDiff, onFileOpen, onShowSettings, autoExpandTools, showRawParameters, providerLabel }) => {
@@ -1080,7 +1081,14 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   const [slashPosition, setSlashPosition] = useState(-1);
   const [visibleMessageCount, setVisibleMessageCount] = useState(100);
   const [geminiStatus, setGeminiStatus] = useState(null);
-  const providerLabel = selectedProvider === 'codex' ? 'Codex' : 'Gemini';
+
+  // WebLLM state
+  const [webllmStatus, setWebllmStatus] = useState({ isLoaded: false, currentModel: null, isInitializing: false });
+  const [webllmProgress, setWebllmProgress] = useState({ progress: 0, text: '' });
+  const webllmAbortController = useRef(null);
+  const webllmConversation = useRef([]);
+
+  const providerLabel = selectedProvider === 'codex' ? 'Codex' : selectedProvider === 'webllm' ? 'WebLLM' : 'Gemini';
   const providerInitial = providerLabel.charAt(0);
 
   useEffect(() => {
@@ -1128,6 +1136,31 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
       isActive = false;
     };
   }, [cliInfo.defaultModel, cliInfo.provider]);
+
+  // Listen for settings changes to update provider
+  useEffect(() => {
+    const handleStorageChange = (e) => {
+      if (e.key === 'gemini-tools-settings') {
+        try {
+          const settings = JSON.parse(e.newValue || '{}');
+          if (settings.selectedProvider) {
+            setSelectedProvider(settings.selectedProvider);
+          }
+          if (settings.selectedModel) {
+            setSelectedModel(settings.selectedModel);
+          }
+          // Reset WebLLM conversation when provider changes
+          if (settings.selectedProvider !== 'webllm') {
+            webllmConversation.current = [];
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
 
   // Memoized diff calculation to prevent recalculating on every render
@@ -2120,39 +2153,196 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
 
     const toolsSettings = getToolsSettings();
 
-    // Send command to Gemini CLI via WebSocket with images
-    sendMessage({
-      type: 'gemini-command',
-      command: input,
-      options: {
-        projectPath: selectedProject.path,
-        cwd: selectedProject.path,
-        sessionId: currentSessionId,
-        resume: !!currentSessionId,
-        toolsSettings: toolsSettings,
-        permissionMode: permissionMode,
-        model: toolsSettings.selectedModel || cliInfo.defaultModel || 'gemini-2.5-flash',
-        provider: toolsSettings.provider || cliInfo.provider || 'gemini',
-        images: uploadedImages // Pass images to backend
-      }
-    });
+    // Handle WebLLM provider locally (runs in browser)
+    if (toolsSettings.provider === 'webllm') {
+      await handleWebLLMSubmit(input, toolsSettings.selectedModel);
+    } else {
+      // Send command to Gemini CLI via WebSocket with images
+      sendMessage({
+        type: 'gemini-command',
+        command: input,
+        options: {
+          projectPath: selectedProject.path,
+          cwd: selectedProject.path,
+          sessionId: currentSessionId,
+          resume: !!currentSessionId,
+          toolsSettings: toolsSettings,
+          permissionMode: permissionMode,
+          model: toolsSettings.selectedModel || cliInfo.defaultModel || 'gemini-2.5-flash',
+          provider: toolsSettings.provider || cliInfo.provider || 'gemini',
+          images: uploadedImages // Pass images to backend
+        }
+      });
+    }
 
     setInput('');
     setAttachedImages([]);
     setUploadingImages(new Map());
     setImageErrors(new Map());
     setIsTextareaExpanded(false);
-    
+
     // Reset textarea height
 
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
-    
+
     // Clear the saved draft since message was sent
     if (selectedProject) {
       localStorage.removeItem(`draft_input_${selectedProject.name}`);
+    }
+  };
+
+  // Handle WebLLM message submission (runs locally in browser)
+  const handleWebLLMSubmit = async (userInput, modelId) => {
+    try {
+      // Check WebGPU support
+      const supported = await webllmEngine.isWebGPUSupported();
+      if (!supported) {
+        const browserInfo = navigator.userAgent;
+        let suggestion = '';
+        if (browserInfo.includes('Safari') && !browserInfo.includes('Chrome')) {
+          suggestion = '\n\nSafari has limited WebGPU support. Please try Chrome 113+ or Edge 113+ instead.';
+        } else if (browserInfo.includes('Firefox')) {
+          suggestion = '\n\nFirefox WebGPU support is experimental. Please try Chrome 113+ or Edge 113+ instead.';
+        } else {
+          suggestion = '\n\nPlease use Chrome 113+, Edge 113+, or enable WebGPU in your browser settings.';
+        }
+        setChatMessages(prev => [...prev, {
+          type: 'error',
+          content: `WebGPU is not supported or not enabled in your browser.${suggestion}\n\nAlternatively, switch to Gemini CLI or Codex CLI provider in Settings.`,
+          timestamp: new Date()
+        }]);
+        setIsLoading(false);
+        setCanAbortSession(false);
+        return;
+      }
+
+      // Set up progress callback
+      webllmEngine.setProgressCallback((progress) => {
+        setWebllmProgress(progress);
+        setGeminiStatus({
+          text: progress.text,
+          tokens: 0,
+          can_interrupt: true
+        });
+      });
+
+      // Initialize engine if needed
+      const status = webllmEngine.getEngineStatus();
+      if (!status.isLoaded || status.currentModel !== modelId) {
+        setWebllmStatus({ isLoaded: false, currentModel: null, isInitializing: true });
+        setGeminiStatus({
+          text: 'Loading model...',
+          tokens: 0,
+          can_interrupt: false
+        });
+
+        try {
+          await webllmEngine.initializeEngine(modelId);
+          setWebllmStatus({ isLoaded: true, currentModel: modelId, isInitializing: false });
+        } catch (error) {
+          setChatMessages(prev => [...prev, {
+            type: 'error',
+            content: `Failed to load model: ${error.message}`,
+            timestamp: new Date()
+          }]);
+          setIsLoading(false);
+          setCanAbortSession(false);
+          setWebllmStatus({ isLoaded: false, currentModel: null, isInitializing: false });
+          return;
+        }
+      }
+
+      // Set up abort controller
+      webllmAbortController.current = new AbortController();
+
+      // Add user message to conversation
+      webllmConversation.current.push({
+        role: 'user',
+        content: userInput
+      });
+
+      // Create a placeholder for the assistant response
+      const assistantMessageId = Date.now();
+      setChatMessages(prev => [...prev, {
+        id: assistantMessageId,
+        type: 'assistant',
+        content: '',
+        timestamp: new Date()
+      }]);
+
+      setGeminiStatus({
+        text: 'Generating',
+        tokens: 0,
+        can_interrupt: true
+      });
+
+      // Generate response with streaming
+      let fullResponse = '';
+      try {
+        fullResponse = await webllmEngine.generateChatCompletion(
+          webllmConversation.current,
+          { temperature: 0.7, maxTokens: 2048 },
+          (chunk, accumulated) => {
+            // Update the message content as we stream
+            setChatMessages(prev => prev.map(msg =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: accumulated }
+                : msg
+            ));
+            setGeminiStatus({
+              text: 'Generating',
+              tokens: accumulated.length,
+              can_interrupt: true
+            });
+          },
+          webllmAbortController.current.signal
+        );
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          setChatMessages(prev => [...prev, {
+            type: 'error',
+            content: `Generation error: ${error.message}`,
+            timestamp: new Date()
+          }]);
+        }
+      }
+
+      // Add assistant response to conversation history
+      if (fullResponse) {
+        webllmConversation.current.push({
+          role: 'assistant',
+          content: fullResponse
+        });
+      }
+
+      // Get stats
+      const stats = await webllmEngine.getStats();
+      if (stats) {
+        setGeminiStatus({
+          text: 'Complete',
+          tokens: fullResponse.length,
+          can_interrupt: false,
+          stats: stats
+        });
+      }
+
+      // Play notification sound
+      playNotificationSound();
+
+    } catch (error) {
+      setChatMessages(prev => [...prev, {
+        type: 'error',
+        content: `WebLLM error: ${error.message}`,
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsLoading(false);
+      setCanAbortSession(false);
+      setGeminiStatus(null);
+      webllmAbortController.current = null;
     }
   };
 
@@ -2277,9 +2467,23 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
     setInput('');
     setIsLoading(false);
     setCanAbortSession(false);
+    // Reset WebLLM conversation history
+    webllmConversation.current = [];
+    webllmEngine.resetChat();
   };
   
   const handleAbortSession = () => {
+    // Handle WebLLM abort
+    if (webllmAbortController.current) {
+      webllmAbortController.current.abort();
+      webllmAbortController.current = null;
+      setIsLoading(false);
+      setCanAbortSession(false);
+      setGeminiStatus(null);
+      return;
+    }
+
+    // Handle regular CLI abort
     if (currentSessionId && canAbortSession) {
       sendMessage({
         type: 'abort-session',
@@ -2416,21 +2620,50 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
           onAbort={handleAbortSession}
         />
         
-        {/* Gemini Mode Indicator - Above input */}
+        {/* WebLLM Loading Progress */}
+        {webllmStatus.isInitializing && webllmProgress.progress < 1 && (
+          <div className="max-w-4xl mx-auto mb-3">
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                  Loading WebLLM Model
+                </span>
+                <span className="text-sm text-purple-600 dark:text-purple-400">
+                  {Math.round(webllmProgress.progress * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-purple-200 dark:bg-purple-800 rounded-full h-2">
+                <div
+                  className="bg-purple-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${webllmProgress.progress * 100}%` }}
+                />
+              </div>
+              <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 truncate">
+                {webllmProgress.text}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Provider Mode Indicator - Above input */}
         <div className="max-w-4xl mx-auto mb-3">
           <div className="flex items-center justify-center gap-3">
             <div className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-all duration-200 ${
-              isYoloMode 
+              selectedProvider === 'webllm'
+                ? 'bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-600'
+                : isYoloMode
                 ? 'bg-gradient-to-r from-orange-50 to-red-50 dark:from-orange-900/20 dark:to-red-900/20 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-600'
                 : 'bg-gradient-to-r from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-600'
             }`}>
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full animate-pulse ${isYoloMode ? 'bg-orange-500' : 'bg-cyan-500'}`} />
+                <div className={`w-2 h-2 rounded-full animate-pulse ${
+                  selectedProvider === 'webllm' ? 'bg-purple-500' : isYoloMode ? 'bg-orange-500' : 'bg-cyan-500'
+                }`} />
                 <span>
-                  {selectedProvider === 'codex' ? 'Codex' : 'Gemini'}{' '}
-                  {isYoloMode ? (selectedProvider === 'codex' ? 'Full Auto' : 'YOLO') : 'Default'}
+                  {selectedProvider === 'webllm' ? 'WebLLM' : selectedProvider === 'codex' ? 'Codex' : 'Gemini'}{' '}
+                  {selectedProvider === 'webllm' ? 'Local' : isYoloMode ? (selectedProvider === 'codex' ? 'Full Auto' : 'YOLO') : 'Default'}
                 </span>
-                <span className="text-xs opacity-75">• {selectedModel}</span>
+                <span className="text-xs opacity-75">• {selectedModel.split('-').slice(0, 3).join('-')}</span>
               </div>
             </div>
             

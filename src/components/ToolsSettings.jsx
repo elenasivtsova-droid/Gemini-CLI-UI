@@ -96,9 +96,18 @@ function ToolsSettings({ isOpen, onClose }) {
     { value: 'o3', label: 'o3', description: 'Reasoning-focused model' },
     { value: 'o4-mini', label: 'o4-mini', description: 'Fast, lightweight reasoning model' }
   ];
+  const defaultWebLLMModels = [
+    { value: 'Llama-3.1-8B-Instruct-q4f32_1-MLC', label: 'Llama 3.1 8B', description: 'Fast local model, good for general tasks (Recommended)' },
+    { value: 'Llama-3.2-3B-Instruct-q4f32_1-MLC', label: 'Llama 3.2 3B', description: 'Lightweight model, faster loading' },
+    { value: 'Phi-3.5-mini-instruct-q4f16_1-MLC', label: 'Phi 3.5 Mini', description: 'Microsoft Phi model, efficient and capable' },
+    { value: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC', label: 'Mistral 7B', description: 'Balanced performance and quality' },
+    { value: 'Qwen2.5-7B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 7B', description: 'Strong multilingual support' },
+    { value: 'gemma-2-9b-it-q4f16_1-MLC', label: 'Gemma 2 9B', description: 'Google Gemma model, high quality' }
+  ];
   const defaultModelByProvider = {
     gemini: 'gemini-2.5-flash',
-    codex: 'gpt-5.1-codex-max'
+    codex: 'gpt-5.1-codex-max',
+    webllm: 'Llama-3.1-8B-Instruct-q4f32_1-MLC'
   };
 
   useEffect(() => {
@@ -128,9 +137,14 @@ function ToolsSettings({ isOpen, onClose }) {
   }, []);
 
   useEffect(() => {
-    const models = selectedProvider === 'codex' ? defaultCodexModels : defaultGeminiModels;
+    const modelsByProvider = {
+      gemini: defaultGeminiModels,
+      codex: defaultCodexModels,
+      webllm: defaultWebLLMModels
+    };
+    const models = modelsByProvider[selectedProvider] || defaultGeminiModels;
     setAvailableModels(models);
-    
+
     if (!models.find(model => model.value === selectedModel)) {
       const fallbackModel = defaultModelByProvider[selectedProvider] || models[0]?.value;
       if (fallbackModel) {
@@ -751,13 +765,28 @@ function ToolsSettings({ isOpen, onClose }) {
                   >
                     <option value="gemini">Gemini CLI</option>
                     <option value="codex">Codex CLI</option>
+                    <option value="webllm">WebLLM (Local)</option>
                   </select>
                   <div className="text-sm text-gray-600 dark:text-gray-400">
                     {selectedProvider === 'codex'
                       ? 'Use OpenAI Codex CLI for coding sessions.'
+                      : selectedProvider === 'webllm'
+                      ? 'Run AI models locally in your browser using WebGPU. Private and offline-capable.'
                       : 'Use Google Gemini CLI for coding sessions.'}
                   </div>
-                  {selectedProvider !== cliInfo.provider && (
+                  {selectedProvider === 'webllm' && (
+                    <div className="text-xs text-blue-600 dark:text-blue-300">
+                      WebLLM runs entirely in your browser. Requires WebGPU support (Chrome 113+, Edge 113+). First load downloads the model (~2-4GB).
+                      {typeof navigator !== 'undefined' && navigator.userAgent && (
+                        navigator.userAgent.includes('Safari') && !navigator.userAgent.includes('Chrome')
+                          ? <span className="block mt-1 text-orange-600 dark:text-orange-400 font-medium">⚠️ Safari has limited WebGPU support. Chrome or Edge recommended.</span>
+                          : navigator.userAgent.includes('Firefox')
+                          ? <span className="block mt-1 text-orange-600 dark:text-orange-400 font-medium">⚠️ Firefox WebGPU is experimental. Chrome or Edge recommended.</span>
+                          : null
+                      )}
+                    </div>
+                  )}
+                  {selectedProvider !== cliInfo.provider && selectedProvider !== 'webllm' && (
                     <div className="text-xs text-orange-600 dark:text-orange-300">
                       Provider mismatch: server is running {cliInfo.displayName}. Project discovery uses the server provider; restart the server with `CLI_PROVIDER={selectedProvider}` for full switching.
                     </div>
@@ -771,7 +800,7 @@ function ToolsSettings({ isOpen, onClose }) {
               <div className="flex items-center gap-3">
                 <Zap className="w-5 h-5 text-cyan-500" />
                 <h3 className="text-lg font-medium text-foreground">
-                  {selectedProvider === 'codex' ? 'Codex Model' : 'Gemini Model'}
+                  {selectedProvider === 'codex' ? 'Codex Model' : selectedProvider === 'webllm' ? 'WebLLM Model' : 'Gemini Model'}
                 </h3>
               </div>
               <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-800 rounded-lg p-4">
@@ -797,7 +826,8 @@ function ToolsSettings({ isOpen, onClose }) {
               </div>
             </div>
             
-            {/* Skip Permissions */}
+            {/* Skip Permissions - Not applicable for WebLLM */}
+            {selectedProvider !== 'webllm' && (
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-orange-500" />
@@ -826,6 +856,7 @@ function ToolsSettings({ isOpen, onClose }) {
                 </label>
               </div>
             </div>
+            )}
 
             {/* Notification Sound Settings */}
             <div className="space-y-4">
@@ -876,7 +907,9 @@ function ToolsSettings({ isOpen, onClose }) {
               </div>
             </div>
 
-            {/* Allowed Tools */}
+            {/* Allowed Tools - Not applicable for WebLLM */}
+            {selectedProvider !== 'webllm' && (
+            <>
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 <Shield className="w-5 h-5 text-green-500" />
@@ -968,7 +1001,7 @@ function ToolsSettings({ isOpen, onClose }) {
               <p className="text-sm text-muted-foreground">
                 Tools that are automatically blocked without prompting for permission
               </p>
-              
+
               <div className="flex flex-col sm:flex-row gap-2">
                 <Input
                   value={newDisallowedTool}
@@ -1030,7 +1063,25 @@ function ToolsSettings({ isOpen, onClose }) {
                 <li><code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">"Bash(rm:*)"</code> - Block all rm commands (dangerous)</li>
               </ul>
             </div>
-            
+            </>
+            )}
+
+            {/* WebLLM Info Section */}
+            {selectedProvider === 'webllm' && (
+            <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+              <h4 className="font-medium text-purple-900 dark:text-purple-100 mb-2">
+                About WebLLM
+              </h4>
+              <ul className="text-sm text-purple-800 dark:text-purple-200 space-y-1">
+                <li>Models run entirely in your browser using WebGPU</li>
+                <li>No data is sent to external servers - fully private</li>
+                <li>First load downloads the model (~2-4GB cached locally)</li>
+                <li>Requires WebGPU support (Chrome 113+, Edge 113+)</li>
+                <li>Performance depends on your GPU capabilities</li>
+              </ul>
+            </div>
+            )}
+
               </div>
             )}
           </div>
