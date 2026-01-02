@@ -13,6 +13,48 @@ let initPromise = null;
 // Progress callback for model loading
 let progressCallback = null;
 
+const FALLBACK_MODEL_BASE_URL = 'https://hf-mirror.com';
+
+function normalizeBaseUrl(baseUrl) {
+  return baseUrl.replace(/\/+$/, '');
+}
+
+function ensureMlcOrg(baseUrl) {
+  const normalized = normalizeBaseUrl(baseUrl);
+  return normalized.endsWith('/mlc-ai') ? normalized : `${normalized}/mlc-ai`;
+}
+
+function rewriteModelUrl(url, baseUrl) {
+  if (typeof url !== 'string') {
+    return url;
+  }
+  const withOrg = ensureMlcOrg(baseUrl);
+  return url.replace(/https?:\/\/[^/]+\/mlc-ai/, withOrg);
+}
+
+function buildAppConfigWithBaseUrl(webllm, baseUrl) {
+  const appConfig = webllm.prebuiltAppConfig;
+  if (!appConfig?.model_list || !Array.isArray(appConfig.model_list)) {
+    return null;
+  }
+  return {
+    ...appConfig,
+    model_list: appConfig.model_list.map((model) => {
+      if (!model) {
+        return model;
+      }
+      const nextModel = { ...model };
+      if (model.model) {
+        nextModel.model = rewriteModelUrl(model.model, baseUrl);
+      }
+      if (model.model_url) {
+        nextModel.model_url = rewriteModelUrl(model.model_url, baseUrl);
+      }
+      return nextModel;
+    })
+  };
+}
+
 /**
  * Set a callback to receive model loading progress updates
  * @param {function} callback - Function receiving { progress, text } updates
@@ -81,17 +123,67 @@ export async function initializeEngine(modelId) {
         progressCallback({ progress: 0, text: `Loading ${modelId}...` });
       }
 
-      // Create the engine with progress reporting
-      engine = await webllm.CreateMLCEngine(modelId, {
-        initProgressCallback: (report) => {
-          if (progressCallback) {
-            progressCallback({
-              progress: report.progress,
-              text: report.text
-            });
+      const availableModels = webllm.prebuiltAppConfig?.model_list?.map(m => m.model_id) || null;
+      // Log available models for debugging
+      console.log('[WebLLM] Available models:', availableModels || 'unknown');
+      console.log('[WebLLM] Attempting to load:', modelId);
+
+      if (Array.isArray(availableModels) && availableModels.length > 0 && !availableModels.includes(modelId)) {
+        throw new Error(
+          `WebLLM model "${modelId}" is not available. ` +
+          `Pick one of: ${availableModels.join(', ')}`
+        );
+      }
+
+      const createEngine = async (appConfigOverride = null) => {
+        const options = {
+          initProgressCallback: (report) => {
+            console.log('[WebLLM] Progress:', report.text, Math.round(report.progress * 100) + '%');
+            if (progressCallback) {
+              progressCallback({
+                progress: report.progress,
+                text: report.text
+              });
+            }
+          }
+        };
+        if (appConfigOverride) {
+          options.appConfig = appConfigOverride;
+        }
+        return webllm.CreateMLCEngine(modelId, options);
+      };
+
+      try {
+        // Create the engine with progress reporting
+        engine = await createEngine();
+      } catch (error) {
+        const baseUrlCandidates = [];
+        const envBaseUrl = import.meta.env?.VITE_WEBLLM_MODEL_BASE_URL?.trim();
+        if (envBaseUrl) {
+          baseUrlCandidates.push(envBaseUrl);
+        }
+        baseUrlCandidates.push(FALLBACK_MODEL_BASE_URL);
+
+        let recovered = false;
+        for (const baseUrl of baseUrlCandidates) {
+          const appConfig = buildAppConfigWithBaseUrl(webllm, baseUrl);
+          if (!appConfig) {
+            continue;
+          }
+          console.warn('[WebLLM] Retrying with model base URL:', baseUrl);
+          try {
+            engine = await createEngine(appConfig);
+            recovered = true;
+            break;
+          } catch (retryError) {
+            error = retryError;
           }
         }
-      });
+
+        if (!recovered) {
+          throw error;
+        }
+      }
 
       currentModel = modelId;
 
@@ -99,6 +191,12 @@ export async function initializeEngine(modelId) {
         progressCallback({ progress: 1, text: 'Model loaded successfully!' });
       }
     } catch (error) {
+      console.error('[WebLLM] Initialization error:', error);
+      console.error('[WebLLM] Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      });
       engine = null;
       currentModel = null;
       throw error;

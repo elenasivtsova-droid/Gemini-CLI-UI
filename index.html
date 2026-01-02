@@ -64,6 +64,51 @@
         }
       }
     </style>
+
+    <!-- Cache API Polyfill for WebLLM compatibility -->
+    <script>
+      (function() {
+        // Always install polyfill for WebLLM compatibility (native caches may not work in all contexts)
+        console.log('[Polyfill] Installing Cache API polyfill for WebLLM');
+          var memoryCache = new Map();
+          var mockCache = {
+            match: function(request) {
+              var url = typeof request === 'string' ? request : request.url;
+              return Promise.resolve(memoryCache.get(url));
+            },
+            put: function(request, response) {
+              var url = typeof request === 'string' ? request : request.url;
+              memoryCache.set(url, response.clone());
+              return Promise.resolve();
+            },
+            add: function(url) {
+              return fetch(url).then(function(response) {
+                if (!response.ok) {
+                  throw new Error('Failed to fetch ' + url + ': ' + response.status);
+                }
+                memoryCache.set(url, response);
+              });
+            },
+            addAll: function(urls) {
+              return Promise.all(urls.map(function(url) { return mockCache.add(url); }));
+            },
+            delete: function(request) {
+              var url = typeof request === 'string' ? request : request.url;
+              return Promise.resolve(memoryCache.delete(url));
+            },
+            keys: function() {
+              return Promise.resolve(Array.from(memoryCache.keys()));
+            }
+          };
+          window.caches = {
+            open: function() { return Promise.resolve(mockCache); },
+            delete: function() { return Promise.resolve(false); },
+            has: function() { return Promise.resolve(false); },
+            keys: function() { return Promise.resolve([]); },
+            match: function() { return Promise.resolve(undefined); }
+          };
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

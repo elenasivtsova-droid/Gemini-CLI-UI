@@ -28,19 +28,19 @@ const cliModelCatalog = {
     { value: 'o4-mini', label: 'o4-mini', description: 'Fast, lightweight reasoning model' }
   ],
   webllm: [
-    { value: 'Llama-3.1-8B-Instruct-q4f32_1-MLC', label: 'Llama 3.1 8B', description: 'Fast local model, good for general tasks (Recommended)' },
-    { value: 'Llama-3.2-3B-Instruct-q4f32_1-MLC', label: 'Llama 3.2 3B', description: 'Lightweight model, faster loading' },
-    { value: 'Phi-3.5-mini-instruct-q4f16_1-MLC', label: 'Phi 3.5 Mini', description: 'Microsoft Phi model, efficient and capable' },
-    { value: 'Mistral-7B-Instruct-v0.3-q4f16_1-MLC', label: 'Mistral 7B', description: 'Balanced performance and quality' },
-    { value: 'Qwen2.5-7B-Instruct-q4f16_1-MLC', label: 'Qwen 2.5 7B', description: 'Strong multilingual support' },
-    { value: 'gemma-2-9b-it-q4f16_1-MLC', label: 'Gemma 2 9B', description: 'Google Gemma model, high quality' }
+    { value: 'Llama-3.2-1B-Instruct-q4f32_1-MLC', label: 'Llama 3.2 1B', description: 'Smallest model, fastest loading (Recommended to test)' },
+    { value: 'Llama-3.2-3B-Instruct-q4f32_1-MLC', label: 'Llama 3.2 3B', description: 'Lightweight model, good balance' },
+    { value: 'Llama-3.1-8B-Instruct-q4f32_1-MLC', label: 'Llama 3.1 8B', description: 'Larger model, better quality' },
+    { value: 'Phi-3.5-mini-instruct-q4f32_1-MLC', label: 'Phi 3.5 Mini', description: 'Microsoft Phi model, efficient' },
+    { value: 'gemma-2-2b-it-q4f16_1-MLC', label: 'Gemma 2 2B', description: 'Google Gemma, small and fast' },
+    { value: 'Qwen3-0.6B-q4f16_1-MLC', label: 'Qwen 3 0.6B', description: 'Tiny model for quick testing' }
   ]
 };
 
 const defaultModelByProvider = {
   gemini: 'gemini-2.5-flash',
   codex: 'gpt-5.1-codex-max',
-  webllm: 'Llama-3.1-8B-Instruct-q4f32_1-MLC'
+  webllm: 'Llama-3.2-1B-Instruct-q4f32_1-MLC'
 };
 
 function getCliProvider() {

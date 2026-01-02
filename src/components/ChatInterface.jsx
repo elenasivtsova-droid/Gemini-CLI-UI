@@ -2197,28 +2197,6 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
   // Handle WebLLM message submission (runs locally in browser)
   const handleWebLLMSubmit = async (userInput, modelId) => {
     try {
-      // Check WebGPU support
-      const supported = await webllmEngine.isWebGPUSupported();
-      if (!supported) {
-        const browserInfo = navigator.userAgent;
-        let suggestion = '';
-        if (browserInfo.includes('Safari') && !browserInfo.includes('Chrome')) {
-          suggestion = '\n\nSafari has limited WebGPU support. Please try Chrome 113+ or Edge 113+ instead.';
-        } else if (browserInfo.includes('Firefox')) {
-          suggestion = '\n\nFirefox WebGPU support is experimental. Please try Chrome 113+ or Edge 113+ instead.';
-        } else {
-          suggestion = '\n\nPlease use Chrome 113+, Edge 113+, or enable WebGPU in your browser settings.';
-        }
-        setChatMessages(prev => [...prev, {
-          type: 'error',
-          content: `WebGPU is not supported or not enabled in your browser.${suggestion}\n\nAlternatively, switch to Gemini CLI or Codex CLI provider in Settings.`,
-          timestamp: new Date()
-        }]);
-        setIsLoading(false);
-        setCanAbortSession(false);
-        return;
-      }
-
       // Set up progress callback
       webllmEngine.setProgressCallback((progress) => {
         setWebllmProgress(progress);
@@ -2243,9 +2221,16 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
           await webllmEngine.initializeEngine(modelId);
           setWebllmStatus({ isLoaded: true, currentModel: modelId, isInitializing: false });
         } catch (error) {
+          let errorMessage = error.message;
+          // Provide helpful messages for common errors
+          if (errorMessage.includes('WebGPU') || errorMessage.includes('GPU') || errorMessage.includes('adapter')) {
+            errorMessage = `WebGPU initialization failed: ${error.message}\n\nTry using Chrome 113+ or Edge 113+. If using Safari, ensure you're on macOS Sonoma or later.`;
+          } else if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+            errorMessage = `Failed to download model: ${error.message}\n\nCheck your internet connection and try again.`;
+          }
           setChatMessages(prev => [...prev, {
             type: 'error',
-            content: `Failed to load model: ${error.message}`,
+            content: errorMessage,
             timestamp: new Date()
           }]);
           setIsLoading(false);
