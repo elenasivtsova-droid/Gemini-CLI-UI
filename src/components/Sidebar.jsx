@@ -205,7 +205,17 @@ function Sidebar({
   const getAllSessions = (project) => {
     const initialSessions = project.sessions || [];
     const additional = additionalSessions[project.name] || [];
-    return [...initialSessions, ...additional];
+    const seen = new Set();
+    const merged = [];
+    for (const session of [...initialSessions, ...additional]) {
+      const sessionKey = session?.id ?? `${session?.lastActivity || 'unknown'}-${session?.summary || 'session'}`;
+      if (seen.has(sessionKey)) {
+        continue;
+      }
+      seen.add(sessionKey);
+      merged.push(session);
+    }
+    return merged;
   };
 
   // Helper function to get the last activity date for a project

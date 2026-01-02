@@ -1393,6 +1393,10 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
           // console.log('Loading messages for session:', selectedSession.id, 'previous:', previousSessionIdRef.current);
           previousSessionIdRef.current = selectedSession.id;
           setCurrentSessionId(selectedSession.id);
+          // Clear any stale loading/status state from a different session.
+          setIsLoading(false);
+          setCanAbortSession(false);
+          setGeminiStatus(null);
           
           // Only load messages from API if this is a user-initiated session change
           // For system-initiated changes, preserve existing messages and rely on WebSocket
@@ -1425,6 +1429,9 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
         setSessionMessages([]);
         setCurrentSessionId(null);
         previousSessionIdRef.current = null;
+        setIsLoading(false);
+        setCanAbortSession(false);
+        setGeminiStatus(null);
       }
     };
     

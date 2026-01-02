@@ -124,6 +124,35 @@ function getCliInfo(providerOverride) {
   };
 }
 
+function getCliSetup(providerOverride) {
+  const resolvedProvider = normalizeProvider(providerOverride);
+  const docs = {
+    gemini: 'https://github.com/google-gemini/gemini-cli',
+    codex: 'https://github.com/openai/codex',
+    claude: 'https://docs.anthropic.com/en/docs/claude-code/cli',
+    webllm: 'https://webllm.mlc.ai/'
+  };
+
+  const installCommandEnv = {
+    gemini: process.env.GEMINI_INSTALL_CMD,
+    codex: process.env.CODEX_INSTALL_CMD,
+    claude: process.env.CLAUDE_INSTALL_CMD,
+    webllm: ''
+  };
+  const loginCommandEnv = {
+    gemini: process.env.GEMINI_LOGIN_CMD,
+    codex: process.env.CODEX_LOGIN_CMD,
+    claude: process.env.CLAUDE_LOGIN_CMD,
+    webllm: ''
+  };
+
+  return {
+    docsUrl: docs[resolvedProvider] || docs.gemini,
+    installCommand: installCommandEnv[resolvedProvider] || '',
+    loginCommand: loginCommandEnv[resolvedProvider] || ''
+  };
+}
+
 function buildSpawnEnv(baseEnv = process.env) {
   const extraPaths = [
     baseEnv.NVM_BIN,
@@ -159,5 +188,6 @@ export {
   getSessionsRoot,
   getProjectConfigPath,
   getCliInfo,
+  getCliSetup,
   buildSpawnEnv
 };
