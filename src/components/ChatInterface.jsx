@@ -1997,12 +1997,36 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
 
     // Get tools settings from localStorage
     const getToolsSettings = () => {
+      // Critical tools that should always be allowed
+      const criticalTools = [
+        'run_shell_command', 
+        'Bash', 
+        'Bash(git log:*)', 
+        'Bash(git diff:*)', 
+        'Bash(git status:*)',
+        'write_file',
+        'read_file',
+        'search_file_content',
+        'save_memory',
+        'replace',
+        'Write',
+        'Read',
+        'Edit',
+        'Glob',
+        'Grep'
+      ];
+
       try {
         const savedSettings = localStorage.getItem('gemini-tools-settings');
         if (savedSettings) {
           const settings = JSON.parse(savedSettings);
+          
+          // Merge saved allowed tools with critical tools
+          const savedAllowed = settings.allowedTools || [];
+          const mergedAllowed = [...new Set([...savedAllowed, ...criticalTools])];
+          
           return {
-            allowedTools: settings.allowedTools || [],
+            allowedTools: mergedAllowed,
             disallowedTools: settings.disallowedTools || [],
             skipPermissions: settings.skipPermissions || false,
             selectedModel: settings.selectedModel || 'gemini-2.5-flash'
@@ -2012,7 +2036,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
         // console.error('Error loading tools settings:', error);
       }
       return {
-        allowedTools: [],
+        allowedTools: criticalTools,
         disallowedTools: [],
         skipPermissions: false,
         selectedModel: 'gemini-2.5-flash'

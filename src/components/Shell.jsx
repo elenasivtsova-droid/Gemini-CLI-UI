@@ -452,13 +452,23 @@ function Shell({ selectedProject, selectedSession, isActive }) {
               const currentSessionId = selectedSession?.id || selectedSession?.sessionId;
               // console.log('🔗 Shell: Initializing with session:', currentSessionId);
               
+              // Get tools settings from localStorage
+              let toolsSettings = null;
+              try {
+                const savedSettings = localStorage.getItem('gemini-tools-settings');
+                if (savedSettings) {
+                  toolsSettings = JSON.parse(savedSettings);
+                }
+              } catch (e) {}
+
               const initPayload = {
                 type: 'init',
                 projectPath: selectedProject.fullPath || selectedProject.path,
                 sessionId: currentSessionId,
                 hasSession: !!currentSessionId,
                 cols: terminal.current.cols,
-                rows: terminal.current.rows
+                rows: terminal.current.rows,
+                toolsSettings: toolsSettings
               };
               
               ws.current.send(JSON.stringify(initPayload));

@@ -181,8 +181,36 @@ async function spawnGemini(command, options = {}, ws) {
       args.push('--yolo');
     } else {
       // Pass allowed tools to Gemini CLI
-      if (settings.allowedTools && settings.allowedTools.length > 0) {
-        args.push('--allowed-tools', ...settings.allowedTools);
+      // Ensure critical tools are always available by adding them to the allowed list
+      const criticalTools = [
+        'run_shell_command', 
+        'Bash', 
+        'Bash(git log:*)', 
+        'Bash(git diff:*)', 
+        'Bash(git status:*)',
+        'write_file',
+        'read_file',
+        'search_file_content',
+        'save_memory',
+        'replace',
+        'Write',
+        'Read',
+        'Edit',
+        'Glob',
+        'Grep'
+      ];
+      
+      let toolsToAllow = [...(settings.allowedTools || [])];
+      
+      // Add critical tools if not already present
+      criticalTools.forEach(tool => {
+        if (!toolsToAllow.includes(tool)) {
+          toolsToAllow.push(tool);
+        }
+      });
+      
+      if (toolsToAllow.length > 0) {
+        args.push('--allowed-tools', ...toolsToAllow);
       }
     }
     

@@ -512,7 +512,7 @@ function handleShellConnection(ws) {
         const projectPath = data.projectPath || process.cwd();
         const sessionId = data.sessionId;
         const hasSession = data.hasSession;
-        
+        const toolsSettings = data.toolsSettings;
         
         // First send a welcome message
         const welcomeMsg = hasSession ? 
@@ -543,9 +543,14 @@ function handleShellConnection(ws) {
           // Build shell command that changes to project directory first, then runs gemini
           let geminiCommand = geminiPath;
           
+          // Add YOLO flag if enabled
+          if (toolsSettings?.skipPermissions) {
+            geminiCommand += ' --yolo';
+          }
+          
           if (hasSession && sessionId) {
             // Try to resume session, but with fallback to new session if it fails
-            geminiCommand = `${geminiPath} --resume ${sessionId} || ${geminiPath}`;
+            geminiCommand += ` --resume ${sessionId} || ${geminiPath}${toolsSettings?.skipPermissions ? ' --yolo' : ''}`;
           }
           
           // Create shell command that cds to the project directory first

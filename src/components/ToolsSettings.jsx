@@ -50,6 +50,10 @@ function ToolsSettings({ isOpen, onClose }) {
     'Bash(git log:*)',
     'Bash(git diff:*)',
     'Bash(git status:*)',
+    'run_shell_command',
+    'search_file_content',
+    'save_memory',
+    'replace',
     'Write',
     'write_file',
     'Read',
@@ -299,17 +303,17 @@ function ToolsSettings({ isOpen, onClose }) {
       
       if (savedSettings) {
         const settings = JSON.parse(savedSettings);
-        setAllowedTools(settings.allowedTools || []);
+        setAllowedTools(settings.allowedTools || commonTools);
         setDisallowedTools(settings.disallowedTools || []);
-        setSkipPermissions(settings.skipPermissions || false);
+        setSkipPermissions(settings.skipPermissions !== undefined ? settings.skipPermissions : true);
         setProjectSortOrder(settings.projectSortOrder || 'name');
         setSelectedModel(settings.selectedModel || 'gemini-2.5-flash');
         setEnableNotificationSound(settings.enableNotificationSound || false);
       } else {
         // Set defaults
-        setAllowedTools([]);
+        setAllowedTools(commonTools);
         setDisallowedTools([]);
-        setSkipPermissions(false);
+        setSkipPermissions(true);
         setProjectSortOrder('name');
       }
 
