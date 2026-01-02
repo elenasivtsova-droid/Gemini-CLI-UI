@@ -69,7 +69,7 @@
 
 /* Ensure proper padding for textarea to not overlap with button */
 .chat-input-container textarea {
-  padding-right: 4rem !important; /* Make room for send button */
+  /* Padding is handled by Tailwind classes in ChatInterface.jsx to accommodate multiple buttons */
 }
 
 @layer base {
