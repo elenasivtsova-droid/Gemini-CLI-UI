@@ -1032,6 +1032,14 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
       return false;
     }
   });
+  const [selectedProvider, setSelectedProvider] = useState(() => {
+    try {
+      const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
+      return settings.selectedProvider || 'gemini';
+    } catch (e) {
+      return 'gemini';
+    }
+  });
   const [cliInfo, setCliInfo] = useState({
     provider: 'gemini',
     defaultModel: 'gemini-2.5-flash',
@@ -1117,7 +1125,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
     return () => {
       isActive = false;
     };
-  }, [cliInfo.defaultModel]);
+  }, [cliInfo.defaultModel, cliInfo.provider]);
 
 
   // Memoized diff calculation to prevent recalculating on every render
@@ -1428,6 +1436,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
       try {
         const settings = JSON.parse(localStorage.getItem('gemini-tools-settings') || '{}');
         setIsYoloMode(settings.skipPermissions || false);
+        setSelectedProvider(settings.selectedProvider || cliInfo.provider || 'gemini');
         const fallbackModel = cliInfo.defaultModel || 'gemini-2.5-flash';
         const candidateModel = settings.selectedModel || fallbackModel;
         const provider = settings.selectedProvider || cliInfo.provider || 'gemini';
@@ -1436,6 +1445,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
         setSelectedModel(hasModel ? candidateModel : fallbackModel);
       } catch (e) {
         setIsYoloMode(false);
+        setSelectedProvider(cliInfo.provider || 'gemini');
         setSelectedModel(cliInfo.defaultModel || 'gemini-2.5-flash');
       }
     };
@@ -2413,7 +2423,10 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
             }`}>
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full animate-pulse ${isYoloMode ? 'bg-orange-500' : 'bg-cyan-500'}`} />
-                <span>{isYoloMode ? 'Gemini YOLO' : 'Gemini Default'}</span>
+                <span>
+                  {selectedProvider === 'codex' ? 'Codex' : 'Gemini'}{' '}
+                  {isYoloMode ? (selectedProvider === 'codex' ? 'Full Auto' : 'YOLO') : 'Default'}
+                </span>
                 <span className="text-xs opacity-75">• {selectedModel}</span>
               </div>
             </div>
@@ -2518,7 +2531,7 @@ function ChatInterface({ selectedProject, selectedSession, ws, sendMessage, mess
                 const isExpanded = e.target.scrollHeight > lineHeight * 2;
                 setIsTextareaExpanded(isExpanded);
               }}
-              placeholder="Ask Gemini to help with your code... (@ to reference files)"
+              placeholder={`Ask ${selectedProvider === 'codex' ? 'Codex' : 'Gemini'} to help with your code... (@ to reference files)`}
               disabled={isLoading}
               rows={1}
               className="chat-input-placeholder w-full pl-12 pr-28 sm:pr-40 py-3 sm:py-4 bg-transparent rounded-2xl focus:outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 disabled:opacity-50 resize-none min-h-[40px] sm:min-h-[56px] max-h-[40vh] sm:max-h-[300px] overflow-y-auto text-sm sm:text-base transition-all duration-200"
