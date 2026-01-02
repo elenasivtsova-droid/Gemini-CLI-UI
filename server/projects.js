@@ -8,6 +8,57 @@ import { getProjectConfigPath, getProjectsRoot } from './cli-config.js';
 const projectDirectoryCache = new Map();
 let cacheTimestamp = Date.now();
 
+function decodeProjectNameToPath(projectName) {
+  if (!projectName) return null;
+
+  const tryDecode = (name, encoding) => {
+    try {
+      return Buffer.from(name, encoding).toString('utf8');
+    } catch {
+      return null;
+    }
+  };
+
+  // New encoding: base64url (no padding)
+  // Old encoding: base64 with all [/+=] replaced by '_' (often leaves trailing '_' as padding artifacts)
+  const base64UrlCandidate = projectName.replace(/[_-]+$/, '');
+  let decoded =
+    tryDecode(base64UrlCandidate, 'base64url') ??
+    tryDecode(projectName, 'base64url');
+
+  if (!decoded) {
+    // Legacy fallback used across the codebase historically
+    const legacy = projectName.replace(/_/g, '+').replace(/-/g, '/');
+    decoded = tryDecode(legacy, 'base64');
+  }
+
+  if (!decoded) return null;
+
+  decoded = decoded.replace(/[^\x20-\x7E]/g, '').trim();
+
+  // Heuristic cleanup for legacy-encoded names that decoded with a stray trailing character.
+  // Only apply if it helps resolve to a real path.
+  if (path.isAbsolute(decoded)) {
+    const direct = decoded;
+    const minusOne = decoded.slice(0, -1);
+    const minusTwo = decoded.slice(0, -2);
+
+    try {
+      if (fsSync.existsSync(direct)) return direct;
+      if (minusOne && fsSync.existsSync(minusOne)) return minusOne;
+      if (minusTwo && fsSync.existsSync(minusTwo)) return minusTwo;
+    } catch {
+      // ignore fs errors, fall through to returning decoded
+    }
+  }
+
+  return decoded;
+}
+
+function encodeProjectPathToName(absolutePath) {
+  return Buffer.from(absolutePath).toString('base64url');
+}
+
 // Clear cache when needed (called when project files change)
 function clearProjectDirectoryCache() {
   projectDirectoryCache.clear();
@@ -36,7 +87,7 @@ async function saveProjectConfig(config, providerOverride = null) {
 // Generate better display name from path
 async function generateDisplayName(projectName, actualProjectDir = null) {
   // Use actual project directory if provided, otherwise decode from project name
-  let projectPath = actualProjectDir || projectName.replace(/-/g, '/');
+  let projectPath = actualProjectDir || decodeProjectNameToPath(projectName) || projectName.replace(/-/g, '/');
   
   // Try to read package.json from the project path
   try {
@@ -88,20 +139,7 @@ async function extractProjectDirectory(projectName, providerOverride = null) {
     
     if (jsonlFiles.length === 0) {
       // Fall back to decoded project name if no sessions
-      // First try to decode from base64
-      try {
-        // Handle custom padding: __ at the end should be replaced with ==
-        let base64Name = projectName.replace(/_/g, '+').replace(/-/g, '/');
-        if (base64Name.endsWith('++')) {
-          base64Name = base64Name.slice(0, -2) + '==';
-        }
-        extractedPath = Buffer.from(base64Name, 'base64').toString('utf8');
-        // Clean the path by removing any non-printable characters
-        extractedPath = extractedPath.replace(/[^\x20-\x7E]/g, '').trim();
-      } catch (e) {
-        // If base64 decode fails, use old method
-        extractedPath = projectName.replace(/-/g, '/');
-      }
+      extractedPath = decodeProjectNameToPath(projectName) || projectName.replace(/-/g, '/');
     } else {
       // Process all JSONL files to collect cwd values
       for (const file of jsonlFiles) {
@@ -162,11 +200,7 @@ async function extractProjectDirectory(projectName, providerOverride = null) {
         
         // Fallback (shouldn't reach here)
         if (!extractedPath) {
-          try {
-            extractedPath = latestCwd || Buffer.from(projectName.replace(/_/g, '+').replace(/-/g, '/'), 'base64').toString('utf8');
-          } catch (e) {
-            extractedPath = latestCwd || projectName.replace(/-/g, '/');
-          }
+          extractedPath = latestCwd || decodeProjectNameToPath(projectName) || projectName.replace(/-/g, '/');
         }
       }
     }
@@ -182,18 +216,7 @@ async function extractProjectDirectory(projectName, providerOverride = null) {
   } catch (error) {
     // console.error(`Error extracting project directory for ${projectName}:`, error);
     // Fall back to decoded project name
-    try {
-      // Handle custom padding: __ at the end should be replaced with ==
-      let base64Name = projectName.replace(/_/g, '+').replace(/-/g, '/');
-      if (base64Name.endsWith('++')) {
-        base64Name = base64Name.slice(0, -2) + '==';
-      }
-      extractedPath = Buffer.from(base64Name, 'base64').toString('utf8');
-      // Clean the path by removing any non-printable characters
-      extractedPath = extractedPath.replace(/[^\x20-\x7E]/g, '').trim();
-    } catch (e) {
-      extractedPath = projectName.replace(/-/g, '/');
-    }
+    extractedPath = decodeProjectNameToPath(projectName) || projectName.replace(/-/g, '/');
     
     // Cache the fallback result too
     projectDirectoryCache.set(cacheKey, extractedPath);
@@ -606,8 +629,8 @@ async function addProjectManually(projectPath, displayName = null, providerOverr
   }
   
   // Generate project name (encode path for use as directory name)
-  // Use base64 encoding to handle all path characters safely
-  const projectName = Buffer.from(absolutePath).toString('base64').replace(/[/+=]/g, '_');
+  // Use base64url encoding to handle all path characters safely (and decode losslessly)
+  const projectName = encodeProjectPathToName(absolutePath);
   
   // Check if project already exists in config or as a folder
   const config = await loadProjectConfig(providerOverride);

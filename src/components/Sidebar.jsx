@@ -375,7 +375,8 @@ function Sidebar({
 
     try {
       const currentSessionCount = (project.sessions?.length || 0) + (additionalSessions[project.name]?.length || 0);
-      const result = await api.getSessions(project.name, 5, currentSessionCount);
+      const response = await api.sessions(project.name, 5, currentSessionCount);
+      const result = await response.json();
       
       // Store additional sessions locally
       setAdditionalSessions(prev => ({
@@ -387,9 +388,12 @@ function Sidebar({
       }));
       
       // Update project metadata if needed
-      if (result.hasMore === false) {
+      const totalSessions = typeof result.total === 'number' ? result.total : currentSessionCount + result.sessions.length;
+      if (currentSessionCount + result.sessions.length >= totalSessions) {
         // Mark that there are no more sessions to load
-        project.sessionMeta = { ...project.sessionMeta, hasMore: false };
+        project.sessionMeta = { ...project.sessionMeta, hasMore: false, total: totalSessions };
+      } else if (typeof result.total === 'number') {
+        project.sessionMeta = { ...project.sessionMeta, total: result.total };
       }
     } catch (error) {
       console.error('Error loading more sessions:', error);
